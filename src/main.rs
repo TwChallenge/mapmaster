@@ -3,15 +3,15 @@ extern crate rocket;
 
 use std::path::PathBuf;
 
-use serde::{Serialize, Deserialize};
+use serde::Serialize;
 use rocket::{http::Status, request::FromRequest, request::Outcome};
 use lazy_static::lazy_static;
 
-lazy_static! {
-    static ref MAP_DIR: PathBuf = {
-        std::env::args().skip(1).nth(0).unwrap_or(".").into()
-    };
-}
+// lazy_static! {
+//     static ref MAP_DIR: PathBuf = {
+//         std::env::args().skip(1).nth(0).unwrap_or(".".into()).into()
+//     };
+// }
 
 fn compare_string(left: &str, right: &str, strict: bool) -> bool {
     if strict {
@@ -53,12 +53,10 @@ fn is_valid(key: &str) -> bool {
 }
 
 #[rocket::async_trait]
-impl<'a, 'r> FromRequest<'a, 'r> for ApiKey {
+impl<'r> FromRequest<'r> for ApiKey {
     type Error = ApiKeyError;
 
-    async fn from_request(
-        request: &'a rocket::Request<'r>,
-    ) -> rocket::request::Outcome<Self, Self::Error> {
+    async fn from_request(request: &'r rocket::Request<'_>) -> Outcome<Self, Self::Error> {
         if std::env::args().any(|x| x == "--dev") {
             return Outcome::Success(ApiKey("".to_string()));
         }
@@ -73,14 +71,15 @@ impl<'a, 'r> FromRequest<'a, 'r> for ApiKey {
 }
 
 #[get("/list?<name>&<test>")]
-fn bots(
+fn list_maps(
     _key: ApiKey,
     name: Option<String>,
     test: Option<bool>,
 ) -> String {
+    "no maps found".to_string()
 }
 
 #[launch]
-fn rocket() -> rocket::Rocket {
-    rocket::ignite().mount("/", routes![bots, bots_pretty, is_bot])
+fn rocket() -> _ {
+    rocket::build().mount("/", routes![list_maps])
 }
