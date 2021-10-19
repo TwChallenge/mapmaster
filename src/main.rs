@@ -38,7 +38,8 @@ lazy_static! {
                 .lines()
                 .map(ToString::to_string)
                 .collect(),
-            base: options.base.unwrap_or("./maps".into()),
+            test_map_folder: options.test_map_folder.unwrap_or("./maps".into()),
+            public_map_folder: options.public_map_folder.unwrap_or("./maps".into()),
             dev: options.dev,
         }
     };
@@ -123,7 +124,7 @@ fn add_or_update_map(
         }
         Some((id, map)) => {
             let mut tx = db.begin()?;
-            tx.update(&id, &Map{difficulty, ..map})?;
+            tx.update(&id, &Map { difficulty, ..map })?;
             tx.commit()?
         }
     }
@@ -195,11 +196,12 @@ async fn create_map(_key: ApiKey, data: Json<CreateMapData<'_>>) -> Result<(), S
         .await
         .map_err(to_bad_request)?;
 
-    let dir = CONFIG.base.join(data.difficulty);
+    let dir = CONFIG.test_map_folder.join("test");
 
     std::fs::create_dir_all(&dir).map_err(to_internal_server_error)?;
 
-    std::fs::write(dir.join(data.name), file).map_err(to_internal_server_error)?;
+    std::fs::write(dir.join(data.name), file)
+        .map_err(to_internal_server_error)?;
 
     add_or_update_map(&DB, data.name.to_string(), difficulty, State::New)
         .map_err(to_bad_request)?;

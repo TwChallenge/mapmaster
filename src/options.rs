@@ -4,7 +4,10 @@ use structopt::StructOpt;
 #[derive(StructOpt, Debug)]
 pub struct Options {
     #[structopt(short, long)]
-    pub base: Option<PathBuf>,
+    pub test_map_folder: Option<PathBuf>,
+
+    #[structopt(short, long)]
+    pub public_map_folder: Option<PathBuf>,
 
     #[structopt(short, long)]
     pub apikeys: Option<PathBuf>,
