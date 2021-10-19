@@ -2,10 +2,11 @@
 extern crate rocket;
 
 use lazy_static::lazy_static;
-use rocket::response::status::BadRequest;
+use rocket::http::Status;
 use rocket::serde::{json::Json, Deserialize, Serialize};
 use rocket_okapi::rapidoc::*;
 use rocket_okapi::{openapi, openapi_get_routes, settings::UrlObject};
+use structsy::Operators;
 // use rocket_okapi::swagger_ui::*;
 use schemars::JsonSchema;
 use std::str::FromStr;
@@ -43,7 +44,9 @@ lazy_static! {
     };
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, PersistentEmbedded, Debug, EnumString)]
+#[derive(
+    Serialize, Deserialize, FromFormField, JsonSchema, PersistentEmbedded, Debug, EnumString, PartialEq, Clone, Copy,
+)]
 #[strum(serialize_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 enum Difficulty {
@@ -53,7 +56,9 @@ enum Difficulty {
     Insane,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, PersistentEmbedded, Debug, EnumString)]
+#[derive(
+    Serialize, Deserialize, FromFormField, JsonSchema, PersistentEmbedded, Debug, EnumString, PartialEq, Clone, Copy,
+)]
 #[strum(serialize_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 enum State {
@@ -71,11 +76,14 @@ struct Map {
     state: State,
 }
 
-// We define a trait with our own logic and we ask structsy to generate the query on the MyData struct
 #[queries(Map)]
-trait MapQuery {
-    // here is our condition method, to notice that the name of the parameter has to be exactly the same of the struct field.
+trait MapByName {
     fn by_name(self, name: &str) -> Self;
+}
+
+fn find_map(db: &Structsy, name: &str) -> Option<Map> {
+    let query = db.query::<Map>().by_name(name);
+    query.fetch().map(|m| m.1).nth(0)
 }
 
 fn add_map(
@@ -84,8 +92,7 @@ fn add_map(
     difficulty: Difficulty,
     state: State,
 ) -> Result<(), StructsyError> {
-    let query = db.query::<Map>().by_name(&name);
-    if query.fetch().count() == 0 {
+    if find_map(&db, &name).is_some() {
         let my_data = Map {
             name,
             difficulty,
@@ -100,12 +107,38 @@ fn add_map(
 }
 
 #[openapi]
-#[get("/list?<name>&<test>")]
-fn list_maps(_key: ApiKey, name: Option<String>, test: Option<bool>) -> Json<Vec<Map>> {
-    DB.scan::<Map>()
-        .map(|it| it.map(|m| m.1).collect::<Vec<_>>())
-        .unwrap_or_default()
-        .into()
+#[get("/list?<name>&<state>&<difficulty>")]
+fn list_maps(
+    _key: ApiKey,
+    name: Option<String>,
+    state: Option<State>,
+    difficulty: Option<Difficulty>,
+) -> Json<Vec<Map>> {
+    let query = DB.query::<Map>();
+    
+    let query = if let Some(name) = name {
+        query.by_name(&name)
+    } else {
+        query
+    };
+
+    let values = query.into_iter().filter_map(|(_id, map)| {
+        if let Some(state) = state {
+            if map.state != state {
+                return None;
+            }
+        };
+
+        if let Some(difficulty) = difficulty {
+            if map.difficulty != difficulty {
+                return None;
+            }
+        };
+
+        Some(map)
+    });
+
+    values.collect::<Vec<_>>().into()
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -116,37 +149,45 @@ struct CreateMapData<'r> {
     url: &'r str,
 }
 
-fn to_bad_request<T: ToString>(e: T) -> BadRequest<String> {
+fn to_bad_request<T: ToString>(e: T) -> Status {
     eprintln!("{}", e.to_string());
-    BadRequest(Some(format!(
-        "Something went wrong and I'm pretty sure it isn't our fault. Fix your request, mate!"
-    )))
+    Status::BadRequest
+}
+
+fn to_internal_server_error<T: ToString>(e: T) -> Status {
+    eprintln!("{}", e.to_string());
+    Status::InternalServerError
 }
 
 #[openapi]
 #[post("/create", format = "json", data = "<data>")]
-fn create_maps(_key: ApiKey, data: Json<CreateMapData<'_>>) -> Result<(), BadRequest<String>> {
-    add_map(
-        &DB,
-        data.name.to_string(),
-        Difficulty::from_str(data.difficulty).map_err(to_bad_request)?,
-        State::New,
-    )
-    .map_err(to_bad_request)?;
+async fn create_map(_key: ApiKey, data: Json<CreateMapData<'_>>) -> Result<(), Status> {
+    let difficulty = Difficulty::from_str(data.difficulty).map_err(to_bad_request)?;
+    if find_map(&DB, &data.name).is_none() {
+        let file = reqwest::get(data.url)
+            .await
+            .map_err(to_bad_request)?
+            .bytes()
+            .await
+            .map_err(to_bad_request)?;
+
+        std::fs::write(CONFIG.base.join(data.difficulty).join(data.name), file).map_err(to_internal_server_error)?;
+
+        add_map(
+            &DB,
+            data.name.to_string(),
+            difficulty,
+            State::New,
+        )
+        .map_err(to_bad_request)?;
+    }
     Ok(())
 }
 
 #[launch]
 fn rocket() -> _ {
     rocket::build()
-        .mount("/", openapi_get_routes![list_maps, create_maps])
-        // .mount(
-        //     "/swagger-ui/",
-        //     make_swagger_ui(&SwaggerUIConfig {
-        //         url: "../openapi.json".to_owned(),
-        //         ..Default::default()
-        //     }),
-        // )
+        .mount("/", openapi_get_routes![list_maps, create_map])
         .mount(
             "/rapidoc/",
             make_rapidoc(&RapiDocConfig {
