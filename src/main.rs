@@ -6,7 +6,7 @@ use rocket::http::Status;
 use rocket::serde::{json::Json, Deserialize, Serialize};
 use rocket_okapi::rapidoc::*;
 use rocket_okapi::{openapi, openapi_get_routes, settings::UrlObject};
-use structsy::Operators;
+use structsy::Ref;
 // use rocket_okapi::swagger_ui::*;
 use schemars::JsonSchema;
 use std::str::FromStr;
@@ -45,7 +45,16 @@ lazy_static! {
 }
 
 #[derive(
-    Serialize, Deserialize, FromFormField, JsonSchema, PersistentEmbedded, Debug, EnumString, PartialEq, Clone, Copy,
+    Serialize,
+    Deserialize,
+    FromFormField,
+    JsonSchema,
+    PersistentEmbedded,
+    Debug,
+    EnumString,
+    PartialEq,
+    Clone,
+    Copy,
 )]
 #[strum(serialize_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
@@ -57,7 +66,16 @@ enum Difficulty {
 }
 
 #[derive(
-    Serialize, Deserialize, FromFormField, JsonSchema, PersistentEmbedded, Debug, EnumString, PartialEq, Clone, Copy,
+    Serialize,
+    Deserialize,
+    FromFormField,
+    JsonSchema,
+    PersistentEmbedded,
+    Debug,
+    EnumString,
+    PartialEq,
+    Clone,
+    Copy,
 )]
 #[strum(serialize_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
@@ -81,26 +99,33 @@ trait MapByName {
     fn by_name(self, name: &str) -> Self;
 }
 
-fn find_map(db: &Structsy, name: &str) -> Option<Map> {
+fn find_map(db: &Structsy, name: &str) -> Option<(Ref<Map>, Map)> {
     let query = db.query::<Map>().by_name(name);
-    query.fetch().map(|m| m.1).nth(0)
+    query.fetch().nth(0)
 }
 
-fn add_map(
+fn add_or_update_map(
     db: &Structsy,
     name: String,
     difficulty: Difficulty,
     state: State,
 ) -> Result<(), StructsyError> {
-    if find_map(&db, &name).is_some() {
-        let my_data = Map {
-            name,
-            difficulty,
-            state,
-        };
-        let mut tx = db.begin()?;
-        tx.insert(&my_data)?;
-        tx.commit()?;
+    let my_data = Map {
+        name,
+        difficulty,
+        state,
+    };
+    match find_map(&db, &my_data.name) {
+        None => {
+            let mut tx = db.begin()?;
+            tx.insert(&my_data)?;
+            tx.commit()?;
+        }
+        Some((id, map)) => {
+            let mut tx = db.begin()?;
+            tx.update(&id, &Map{difficulty, ..map})?;
+            tx.commit()?
+        }
     }
 
     Ok(())
@@ -115,7 +140,7 @@ fn list_maps(
     difficulty: Option<Difficulty>,
 ) -> Json<Vec<Map>> {
     let query = DB.query::<Map>();
-    
+
     let query = if let Some(name) = name {
         query.by_name(&name)
     } else {
@@ -163,24 +188,21 @@ fn to_internal_server_error<T: ToString>(e: T) -> Status {
 #[post("/create", format = "json", data = "<data>")]
 async fn create_map(_key: ApiKey, data: Json<CreateMapData<'_>>) -> Result<(), Status> {
     let difficulty = Difficulty::from_str(data.difficulty).map_err(to_bad_request)?;
-    if find_map(&DB, &data.name).is_none() {
-        let file = reqwest::get(data.url)
-            .await
-            .map_err(to_bad_request)?
-            .bytes()
-            .await
-            .map_err(to_bad_request)?;
-
-        std::fs::write(CONFIG.base.join(data.difficulty).join(data.name), file).map_err(to_internal_server_error)?;
-
-        add_map(
-            &DB,
-            data.name.to_string(),
-            difficulty,
-            State::New,
-        )
+    let file = reqwest::get(data.url)
+        .await
+        .map_err(to_bad_request)?
+        .bytes()
+        .await
         .map_err(to_bad_request)?;
-    }
+
+    let dir = CONFIG.base.join(data.difficulty);
+
+    std::fs::create_dir_all(&dir).map_err(to_internal_server_error)?;
+
+    std::fs::write(dir.join(data.name), file).map_err(to_internal_server_error)?;
+
+    add_or_update_map(&DB, data.name.to_string(), difficulty, State::New)
+        .map_err(to_bad_request)?;
     Ok(())
 }
 
