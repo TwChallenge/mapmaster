@@ -41,18 +41,13 @@ lazy_static! {
     static ref CONFIG: Config = {
         let options = Options::from_args();
         Config {
-            apikeys: std::fs::read_to_string(
-                options
-                    .apikeys
-                    .clone()
-                    .unwrap_or_else(|| "./apikeys".into()),
-            )
-            .unwrap_or_default()
-            .lines()
-            .map(ToString::to_string)
-            .collect(),
-            test_map_folder: options.test_map_folder.unwrap_or_else(|| "./maps".into()),
-            public_map_folder: options.public_map_folder.unwrap_or_else(|| "./maps".into()),
+            apikeys: std::fs::read_to_string(options.apikeys)
+                .unwrap_or_default()
+                .lines()
+                .map(ToString::to_string)
+                .collect(),
+            test_map_folder: options.test_maps,
+            public_map_folder: options.published_maps,
             dev: options.dev,
         }
     };
@@ -407,6 +402,8 @@ async fn create_map(_key: ApiKey, data: Json<CreateMapData<'_>>) -> Result<(), C
 
 #[launch]
 fn rocket() -> _ {
+    // this is needed in order to display help texts, because they dont work in lazy_static
+    let _ = Options::from_args();
     rocket::build()
         .mount(
             "/",

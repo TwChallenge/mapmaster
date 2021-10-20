@@ -3,15 +3,20 @@ use structopt::StructOpt;
 
 #[derive(StructOpt, Debug)]
 pub struct Options {
-    #[structopt(short, long)]
-    pub test_map_folder: Option<PathBuf>,
+    /// The folder to use as a base for all test maps.
+    #[structopt(short, long, name = "test directory", default_value = "./maps")]
+    pub test_maps: PathBuf,
 
-    #[structopt(short, long)]
-    pub public_map_folder: Option<PathBuf>,
+    /// The folder to use as a base for all published maps.
+    #[structopt(short, long, name = "directory", default_value = "./maps")]
+    pub published_maps: PathBuf,
 
-    #[structopt(short, long)]
-    pub apikeys: Option<PathBuf>,
+    /// The file which contains the API keys for access.
+    #[structopt(short, long, name = "text file", default_value = "./apikeys")]
+    pub apikeys: PathBuf,
 
+    /// Enables developer mode. With developer mode enabled, you wont need an api key to call the
+    /// api.
     #[structopt(short, long)]
     pub dev: bool,
 }
