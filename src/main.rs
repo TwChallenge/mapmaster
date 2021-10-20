@@ -6,11 +6,10 @@ use rocket::http::Status;
 use rocket::serde::{json::Json, Deserialize, Serialize};
 use rocket_okapi::rapidoc::*;
 use rocket_okapi::{openapi, openapi_get_routes, settings::UrlObject};
-use structsy::Ref;
-// use rocket_okapi::swagger_ui::*;
 use schemars::JsonSchema;
 use std::str::FromStr;
 use structopt::StructOpt;
+use structsy::Ref;
 use structsy::{Structsy, StructsyError, StructsyTx};
 use structsy_derive::{queries, Persistent, PersistentEmbedded};
 use strum::EnumString;
@@ -24,6 +23,15 @@ use apikey::ApiKey;
 use config::Config;
 use options::Options;
 
+#[derive(Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "rocket::serde")]
+struct CustomError {
+    msg: String,
+    code: u16,
+}
+
+type CustomStatus = (Status, Json<CustomError>);
+
 lazy_static! {
     static ref DB: Structsy = {
         let db = Structsy::open("maps.persydb").expect("could not open database file");
@@ -33,13 +41,18 @@ lazy_static! {
     static ref CONFIG: Config = {
         let options = Options::from_args();
         Config {
-            apikeys: std::fs::read_to_string(options.apikeys.clone().unwrap_or("./apikeys".into()))
-                .unwrap_or_default()
-                .lines()
-                .map(ToString::to_string)
-                .collect(),
-            test_map_folder: options.test_map_folder.unwrap_or("./maps".into()),
-            public_map_folder: options.public_map_folder.unwrap_or("./maps".into()),
+            apikeys: std::fs::read_to_string(
+                options
+                    .apikeys
+                    .clone()
+                    .unwrap_or_else(|| "./apikeys".into()),
+            )
+            .unwrap_or_default()
+            .lines()
+            .map(ToString::to_string)
+            .collect(),
+            test_map_folder: options.test_map_folder.unwrap_or_else(|| "./maps".into()),
+            public_map_folder: options.public_map_folder.unwrap_or_else(|| "./maps".into()),
             dev: options.dev,
         }
     };
@@ -102,7 +115,7 @@ trait MapByName {
 
 fn find_map(db: &Structsy, name: &str) -> Option<(Ref<Map>, Map)> {
     let query = db.query::<Map>().by_name(name);
-    query.fetch().nth(0)
+    query.fetch().next()
 }
 
 fn add_or_update_map(
@@ -116,7 +129,7 @@ fn add_or_update_map(
         difficulty,
         state,
     };
-    match find_map(&db, &my_data.name) {
+    match find_map(db, &my_data.name) {
         None => {
             let mut tx = db.begin()?;
             tx.insert(&my_data)?;
@@ -175,19 +188,204 @@ struct CreateMapData<'r> {
     url: &'r str,
 }
 
-fn to_bad_request<T: ToString>(e: T) -> Status {
-    eprintln!("{}", e.to_string());
-    Status::BadRequest
+#[derive(Deserialize, JsonSchema)]
+#[serde(crate = "rocket::serde")]
+struct ChangeMapDifficultyData<'r> {
+    name: &'r str,
+    difficulty: &'r str,
 }
 
-fn to_internal_server_error<T: ToString>(e: T) -> Status {
+#[derive(Deserialize, JsonSchema)]
+#[serde(crate = "rocket::serde")]
+struct JustTheMapName<'r> {
+    name: &'r str,
+}
+
+fn to_bad_request<T: ToString>(e: T) -> CustomStatus {
     eprintln!("{}", e.to_string());
-    Status::InternalServerError
+    (
+        Status::BadRequest,
+        Json(CustomError {
+            msg: "Something went wrong on client side!".to_string(),
+            code: Status::BadRequest.code,
+        }),
+    )
+}
+
+fn to_custom_bad_request(msg: String) -> CustomStatus {
+    eprintln!("{}", msg);
+    (
+        Status::BadRequest,
+        Json(CustomError {
+            msg,
+            code: Status::BadRequest.code,
+        }),
+    )
+}
+
+fn to_internal_server_error<T: ToString>(e: T) -> CustomStatus {
+    eprintln!("{}", e.to_string());
+    (
+        Status::InternalServerError,
+        Json(CustomError {
+            msg: "Something went wrong on server side!".to_string(),
+            code: Status::InternalServerError.code,
+        }),
+    )
+}
+
+fn to_map_not_found_error<T: ToString>(e: T) -> CustomStatus {
+    eprintln!("{}", e.to_string());
+    (
+        Status::NotFound,
+        Json(CustomError {
+            msg: "Map not found!".to_string(),
+            code: Status::NotFound.code,
+        }),
+    )
+}
+
+#[openapi]
+#[post("/recall", format = "json", data = "<data>")]
+async fn recall_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), CustomStatus> {
+    if let Some((id, map)) = find_map(&DB, data.name) {
+        let mut tx = DB.begin().map_err(to_internal_server_error)?;
+        tx.update(
+            &id,
+            &Map {
+                state: State::New,
+                ..map
+            },
+        )
+        .map_err(to_internal_server_error)?;
+        tx.commit().map_err(to_internal_server_error)?;
+        Ok(())
+    } else {
+        Err(to_map_not_found_error(format!(
+            "Map \"{}\" not found!",
+            data.name
+        )))
+    }
+}
+
+#[openapi]
+#[post("/decline", format = "json", data = "<data>")]
+async fn decline_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), CustomStatus> {
+    if let Some((id, map)) = find_map(&DB, data.name) {
+        if [State::Declined, State::New].contains(&map.state) {
+            let mut tx = DB.begin().map_err(to_internal_server_error)?;
+            tx.update(
+                &id,
+                &Map {
+                    state: State::Declined,
+                    ..map
+                },
+            )
+            .map_err(to_internal_server_error)?;
+            tx.commit().map_err(to_internal_server_error)?;
+            Ok(())
+        } else {
+            Err(to_custom_bad_request(format!(
+                "Cannot go from state {:?} to {:?}!",
+                map.state,
+                State::Declined
+            )))
+        }
+    } else {
+        Err(to_map_not_found_error(format!(
+            "Map \"{}\" not found!",
+            data.name
+        )))
+    }
+}
+
+#[openapi]
+#[post("/publish", format = "json", data = "<data>")]
+async fn publish_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), CustomStatus> {
+    if let Some((id, map)) = find_map(&DB, data.name) {
+        if [State::Published, State::Approved].contains(&map.state) {
+            let mut tx = DB.begin().map_err(to_internal_server_error)?;
+            tx.update(
+                &id,
+                &Map {
+                    state: State::Published,
+                    ..map
+                },
+            )
+            .map_err(to_internal_server_error)?;
+            tx.commit().map_err(to_internal_server_error)?;
+            Ok(())
+        } else {
+            Err(to_custom_bad_request(format!(
+                "Cannot go from state {:?} to {:?}!",
+                map.state,
+                State::Published
+            )))
+        }
+    } else {
+        Err(to_map_not_found_error(format!(
+            "Map \"{}\" not found!",
+            data.name
+        )))
+    }
+}
+
+#[openapi]
+#[post("/approve", format = "json", data = "<data>")]
+async fn approve_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), CustomStatus> {
+    if let Some((id, map)) = find_map(&DB, data.name) {
+        if [State::Approved, State::New].contains(&map.state) {
+            let mut tx = DB.begin().map_err(to_internal_server_error)?;
+            tx.update(
+                &id,
+                &Map {
+                    state: State::Approved,
+                    ..map
+                },
+            )
+            .map_err(to_internal_server_error)?;
+            tx.commit().map_err(to_internal_server_error)?;
+            Ok(())
+        } else {
+            Err(to_custom_bad_request(format!(
+                "Cannot go from state {:?} to {:?}!",
+                map.state,
+                State::Approved
+            )))
+        }
+    } else {
+        Err(to_map_not_found_error(format!(
+            "Map \"{}\" not found!",
+            data.name
+        )))
+    }
+}
+
+#[openapi]
+#[post("/change_difficulty", format = "json", data = "<data>")]
+async fn change_map_difficulty(
+    _key: ApiKey,
+    data: Json<ChangeMapDifficultyData<'_>>,
+) -> Result<(), CustomStatus> {
+    let difficulty = Difficulty::from_str(data.difficulty).map_err(to_bad_request)?;
+
+    if let Some((id, map)) = find_map(&DB, data.name) {
+        let mut tx = DB.begin().map_err(to_internal_server_error)?;
+        tx.update(&id, &Map { difficulty, ..map })
+            .map_err(to_internal_server_error)?;
+        tx.commit().map_err(to_internal_server_error)?;
+        Ok(())
+    } else {
+        Err(to_map_not_found_error(format!(
+            "Map \"{}\" not found!",
+            data.name
+        )))
+    }
 }
 
 #[openapi]
 #[post("/create", format = "json", data = "<data>")]
-async fn create_map(_key: ApiKey, data: Json<CreateMapData<'_>>) -> Result<(), Status> {
+async fn create_map(_key: ApiKey, data: Json<CreateMapData<'_>>) -> Result<(), CustomStatus> {
     let difficulty = Difficulty::from_str(data.difficulty).map_err(to_bad_request)?;
     let file = reqwest::get(data.url)
         .await
@@ -200,8 +398,7 @@ async fn create_map(_key: ApiKey, data: Json<CreateMapData<'_>>) -> Result<(), S
 
     std::fs::create_dir_all(&dir).map_err(to_internal_server_error)?;
 
-    std::fs::write(dir.join(data.name), file)
-        .map_err(to_internal_server_error)?;
+    std::fs::write(dir.join(data.name), file).map_err(to_internal_server_error)?;
 
     add_or_update_map(&DB, data.name.to_string(), difficulty, State::New)
         .map_err(to_bad_request)?;
@@ -211,7 +408,18 @@ async fn create_map(_key: ApiKey, data: Json<CreateMapData<'_>>) -> Result<(), S
 #[launch]
 fn rocket() -> _ {
     rocket::build()
-        .mount("/", openapi_get_routes![list_maps, create_map])
+        .mount(
+            "/",
+            openapi_get_routes![
+                list_maps,
+                create_map,
+                change_map_difficulty,
+                approve_map,
+                publish_map,
+                recall_map,
+                decline_map
+            ],
+        )
         .mount(
             "/rapidoc/",
             make_rapidoc(&RapiDocConfig {
