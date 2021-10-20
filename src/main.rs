@@ -395,13 +395,13 @@ async fn create_map(_key: ApiKey, data: Json<CreateMapData<'_>>) -> Result<(), C
 
     let name = data.name.to_lowercase();
 
-    std::fs::write(dir.join(&name), file).map_err(to_internal_server_error)?;
-
     let name = if name.ends_with(".map") {
         name[0..name.len() - 4].to_string()
     } else {
         name
     };
+
+    std::fs::write(dir.join(&format!("{}.map", name)), file).map_err(to_internal_server_error)?;
 
     add_or_update_map(&DB, name, difficulty, State::New)
         .map_err(to_bad_request)?;
