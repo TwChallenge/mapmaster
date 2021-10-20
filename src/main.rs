@@ -109,7 +109,7 @@ trait MapByName {
 }
 
 fn find_map(db: &Structsy, name: &str) -> Option<(Ref<Map>, Map)> {
-    let query = db.query::<Map>().by_name(name);
+    let query = db.query::<Map>().by_name(&name.to_lowercase());
     query.fetch().next()
 }
 
@@ -393,9 +393,17 @@ async fn create_map(_key: ApiKey, data: Json<CreateMapData<'_>>) -> Result<(), C
 
     std::fs::create_dir_all(&dir).map_err(to_internal_server_error)?;
 
-    std::fs::write(dir.join(data.name), file).map_err(to_internal_server_error)?;
+    let name = data.name.to_lowercase();
 
-    add_or_update_map(&DB, data.name.to_string(), difficulty, State::New)
+    std::fs::write(dir.join(&name), file).map_err(to_internal_server_error)?;
+
+    let name = if name.ends_with(".map") {
+        name[0..name.len() - 4].to_string()
+    } else {
+        name
+    };
+
+    add_or_update_map(&DB, name, difficulty, State::New)
         .map_err(to_bad_request)?;
     Ok(())
 }
