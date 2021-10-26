@@ -12,7 +12,7 @@ pub struct Options {
     pub published_maps: PathBuf,
 
     /// The file which contains the API keys for access.
-    #[structopt(short, long, name = "text file", default_value = "./apikeys")]
+    #[structopt(short, long, name = "api text file", default_value = "./apikeys")]
     pub apikeys: PathBuf,
 
     /// Enables developer mode. With developer mode enabled, you wont need an api key to call the

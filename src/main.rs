@@ -7,6 +7,7 @@ use rocket::serde::{json::Json, Deserialize, Serialize};
 use rocket_okapi::rapidoc::*;
 use rocket_okapi::{openapi, openapi_get_routes, settings::UrlObject};
 use schemars::JsonSchema;
+use std::path::Path;
 use std::str::FromStr;
 use structopt::StructOpt;
 use structsy::Ref;
@@ -140,6 +141,15 @@ fn add_or_update_map(
     Ok(())
 }
 
+fn move_map<P: AsRef<Path>>(from: P, to: P) -> Result<(), std::io::Error> {
+    let p = to.as_ref();
+    if let Some(parent) = p.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::copy(&from, to)?;
+    std::fs::remove_file(from)
+}
+
 #[openapi]
 #[get("/list?<name>&<state>&<difficulty>")]
 fn list_maps(
@@ -267,7 +277,7 @@ async fn recall_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), 
 #[post("/decline", format = "json", data = "<data>")]
 async fn decline_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), CustomStatus> {
     if let Some((id, map)) = find_map(&DB, data.name) {
-        if [State::Declined, State::New].contains(&map.state) {
+        if [State::Approved, State::New].contains(&map.state) {
             let mut tx = DB.begin().map_err(to_internal_server_error)?;
             tx.update(
                 &id,
@@ -279,6 +289,10 @@ async fn decline_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
             .map_err(to_internal_server_error)?;
             tx.commit().map_err(to_internal_server_error)?;
             Ok(())
+        } else if map.state == State::Declined {
+            Err(to_custom_bad_request(
+                "This map is already declined!".to_string()
+            ))
         } else {
             Err(to_custom_bad_request(format!(
                 "Cannot go from state {:?} to {:?}!",
@@ -298,7 +312,7 @@ async fn decline_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
 #[post("/publish", format = "json", data = "<data>")]
 async fn publish_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), CustomStatus> {
     if let Some((id, map)) = find_map(&DB, data.name) {
-        if [State::Published, State::Approved].contains(&map.state) {
+        if State::Approved == map.state {
             let mut tx = DB.begin().map_err(to_internal_server_error)?;
             tx.update(
                 &id,
@@ -310,6 +324,10 @@ async fn publish_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
             .map_err(to_internal_server_error)?;
             tx.commit().map_err(to_internal_server_error)?;
             Ok(())
+        } else if State::Published == map.state {
+            Err(to_custom_bad_request(
+                "This map is already published!".to_string(),
+            ))
         } else {
             Err(to_custom_bad_request(format!(
                 "Cannot go from state {:?} to {:?}!",
@@ -329,7 +347,7 @@ async fn publish_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
 #[post("/approve", format = "json", data = "<data>")]
 async fn approve_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), CustomStatus> {
     if let Some((id, map)) = find_map(&DB, data.name) {
-        if [State::Approved, State::New].contains(&map.state) {
+        if [State::Declined, State::New].contains(&map.state) {
             let mut tx = DB.begin().map_err(to_internal_server_error)?;
             tx.update(
                 &id,
@@ -341,6 +359,10 @@ async fn approve_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
             .map_err(to_internal_server_error)?;
             tx.commit().map_err(to_internal_server_error)?;
             Ok(())
+        } else if map.state == State::Approved {
+            Err(to_custom_bad_request(
+                "This map is already declined!".to_string()
+            ))
         } else {
             Err(to_custom_bad_request(format!(
                 "Cannot go from state {:?} to {:?}!",
@@ -403,8 +425,7 @@ async fn create_map(_key: ApiKey, data: Json<CreateMapData<'_>>) -> Result<(), C
 
     std::fs::write(dir.join(&format!("{}.map", name)), file).map_err(to_internal_server_error)?;
 
-    add_or_update_map(&DB, name, difficulty, State::New)
-        .map_err(to_bad_request)?;
+    add_or_update_map(&DB, name, difficulty, State::New).map_err(to_bad_request)?;
     Ok(())
 }
 
