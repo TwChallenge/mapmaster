@@ -75,6 +75,19 @@ enum Difficulty {
     Insane,
 }
 
+impl AsRef<Path> for Difficulty {
+    fn as_ref(&self) -> &Path {
+        use Difficulty::*;
+        let s = match self {
+            Easy => "easy",
+            Main => "main",
+            Hard => "hard",
+            Insane => "insane",
+        };
+        Path::new(s)
+    }
+}
+
 #[derive(
     Serialize,
     Deserialize,
@@ -323,6 +336,10 @@ async fn publish_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
             )
             .map_err(to_internal_server_error)?;
             tx.commit().map_err(to_internal_server_error)?;
+            let source_dir = CONFIG.test_map_folder.join("test");
+            let target_dir = CONFIG.public_map_folder.join(map.difficulty);
+            std::fs::create_dir_all(&target_dir).map_err(to_internal_server_error)?;
+            move_map(source_dir.join(map.name), target_dir.join(map.nam))?;
             Ok(())
         } else if State::Published == map.state {
             Err(to_custom_bad_request(
