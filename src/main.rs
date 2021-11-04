@@ -276,7 +276,7 @@ fn to_map_not_found_error<T: ToString>(e: T) -> CustomStatus {
 async fn recall_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), CustomStatus> {
     if let Some((id, map)) = find_map(&DB, data.name) {
         let mut tx = DB.begin().map_err(to_internal_server_error)?;
-        let map_name = map.name.clone();
+        let map_name = format!("{}.map", map.name);
         tx.update(
             &id,
             &Map {
@@ -345,7 +345,7 @@ async fn publish_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
     if let Some((id, map)) = find_map(&DB, data.name) {
         if State::Approved == map.state {
             let mut tx = DB.begin().map_err(to_internal_server_error)?;
-            let map_name = map.name.clone();
+            let map_name = format!("{}.map", map.name);
             tx.update(
                 &id,
                 &Map {
