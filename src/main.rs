@@ -9,6 +9,7 @@ use rocket_okapi::{openapi, openapi_get_routes, settings::UrlObject};
 use schemars::JsonSchema;
 use std::path::Path;
 use std::str::FromStr;
+use std::time::SystemTime;
 use structopt::StructOpt;
 use structsy::Ref;
 use structsy::{Structsy, StructsyError, StructsyTx};
@@ -115,6 +116,7 @@ struct Map {
     name: String,
     difficulty: Difficulty,
     state: State,
+    created_at: u64,
 }
 
 #[queries(Map)]
@@ -127,27 +129,33 @@ fn find_map(db: &Structsy, name: &str) -> Option<(Ref<Map>, Map)> {
     query.fetch().next()
 }
 
+enum Either<L, R> {
+    Left(L),
+    Right(R),
+}
+
 fn add_or_update_map(
     db: &Structsy,
     name: String,
     difficulty: Difficulty,
     state: State,
-) -> Result<(), StructsyError> {
+) -> Result<(), Either<StructsyError, Box<dyn std::error::Error>>> {
     let my_data = Map {
         name: name.to_lowercase(),
         difficulty,
         state,
+        created_at: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_err(|e| Either::Right(e.into()))?.as_secs(),
     };
     match find_map(db, &my_data.name) {
         None => {
-            let mut tx = db.begin()?;
-            tx.insert(&my_data)?;
-            tx.commit()?;
+            let mut tx = db.begin().map_err(Either::Left)?;
+            tx.insert(&my_data).map_err(Either::Left)?;
+            tx.commit().map_err(Either::Left)?;
         }
         Some((id, map)) => {
-            let mut tx = db.begin()?;
-            tx.update(&id, &Map { difficulty, ..map })?;
-            tx.commit()?
+            let mut tx = db.begin().map_err(Either::Left)?;
+            tx.update(&id, &Map { difficulty, ..map }).map_err(Either::Left)?;
+            tx.commit().map_err(Either::Left)?
         }
     }
 
@@ -268,6 +276,7 @@ fn to_map_not_found_error<T: ToString>(e: T) -> CustomStatus {
 async fn recall_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), CustomStatus> {
     if let Some((id, map)) = find_map(&DB, data.name) {
         let mut tx = DB.begin().map_err(to_internal_server_error)?;
+        let map_name = map.name.clone();
         tx.update(
             &id,
             &Map {
@@ -276,15 +285,15 @@ async fn recall_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), 
             },
         )
         .map_err(to_internal_server_error)?;
-        tx.commit().map_err(to_internal_server_error)?;
 
         if map.state == State::Published {
             let source_dir = CONFIG.public_map_folder.join(map.difficulty);
             let target_dir = CONFIG.test_map_folder.join("test");
 
             std::fs::create_dir_all(&target_dir).map_err(to_internal_server_error)?;
-            move_map(source_dir.join(map.name), target_dir.join(map.name))?;
+            move_map(source_dir.join(&map_name), target_dir.join(&map_name)).map_err(to_internal_server_error)?;
         }
+        tx.commit().map_err(to_internal_server_error)?;
         Ok(())
     } else {
         Err(to_map_not_found_error(format!(
@@ -336,6 +345,7 @@ async fn publish_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
     if let Some((id, map)) = find_map(&DB, data.name) {
         if State::Approved == map.state {
             let mut tx = DB.begin().map_err(to_internal_server_error)?;
+            let map_name = map.name.clone();
             tx.update(
                 &id,
                 &Map {
@@ -344,13 +354,13 @@ async fn publish_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
                 },
             )
             .map_err(to_internal_server_error)?;
-            tx.commit().map_err(to_internal_server_error)?;
 
             let source_dir = CONFIG.test_map_folder.join("test");
             let target_dir = CONFIG.public_map_folder.join(map.difficulty);
 
             std::fs::create_dir_all(&target_dir).map_err(to_internal_server_error)?;
-            move_map(source_dir.join(map.name), target_dir.join(map.name))?;
+            move_map(source_dir.join(&map_name), target_dir.join(&map_name)).map_err(to_internal_server_error)?;
+            tx.commit().map_err(to_internal_server_error)?;
             Ok(())
         } else if State::Published == map.state {
             Err(to_custom_bad_request(
@@ -454,8 +464,12 @@ async fn create_map(_key: ApiKey, data: Json<CreateMapData<'_>>) -> Result<(), C
 
     std::fs::write(dir.join(&format!("{}.map", name)), file).map_err(to_internal_server_error)?;
 
-    add_or_update_map(&DB, name, difficulty, State::New).map_err(to_bad_request)?;
-    Ok(())
+    use Either::*;
+
+    add_or_update_map(&DB, name, difficulty, State::New).map_err(|e| match e {
+        Left(l) => to_bad_request(l),
+        Right(r) => to_internal_server_error(r),
+    })
 }
 
 #[launch]
