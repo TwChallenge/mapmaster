@@ -276,6 +276,7 @@ async fn recall_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), 
 #[openapi]
 #[post("/decline", format = "json", data = "<data>")]
 async fn decline_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), CustomStatus> {
+    //TODO: Delete Map after 3Days from all Testservers
     if let Some((id, map)) = find_map(&DB, data.name) {
         if [State::Approved, State::New].contains(&map.state) {
             let mut tx = DB.begin().map_err(to_internal_server_error)?;
@@ -323,6 +324,25 @@ async fn publish_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
             )
             .map_err(to_internal_server_error)?;
             tx.commit().map_err(to_internal_server_error)?;
+            
+            //TODO: Move Map to Public 
+            let mut dirtemp = CONFIG.test_map_folder.join("test");
+            let mut dirpublic = CONFIG.public_map_folder.join("");
+            if Difficulty::Easy == map.difficulty {
+                dirpublic.join("easy");
+            }else if Difficulty::Hard == map.difficulty{
+                dirpublic.join("hard");
+            }else if Difficulty::Insane == map.difficulty{
+                dirpublic.join("insane");
+            }else if Difficulty::Main == map.difficulty{
+                dirpublic.join("main");
+            } //TODO else with an error message that difficulty is invalid.
+            
+            //TODO Move map to Official map folder
+            //let mut tempfile = dirtemp + map.name + ".map";   // String not a pathstring .join(map.name + ".map");
+            //let mut publicfile = dirtemp + map.name + ".map"; // String not a pathstring .join(map.name + ".map");
+            //move_map(tempfile, publicfile);
+            //TODO commit to Github and trigger Slaves
             Ok(())
         } else if State::Published == map.state {
             Err(to_custom_bad_request(
@@ -361,7 +381,7 @@ async fn approve_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
             Ok(())
         } else if map.state == State::Approved {
             Err(to_custom_bad_request(
-                "This map is already declined!".to_string()
+                "This map is already Approved!".to_string()
             ))
         } else {
             Err(to_custom_bad_request(format!(
@@ -385,8 +405,8 @@ async fn change_map_difficulty(
     data: Json<ChangeMapDifficultyData<'_>>,
 ) -> Result<(), CustomStatus> {
     let difficulty = Difficulty::from_str(data.difficulty).map_err(to_bad_request)?;
-
-    if let Some((id, map)) = find_map(&DB, data.name) {
+    
+    if let Some((id, map)) = find_map(&DB, &data.name.to_lowercase()) {
         let mut tx = DB.begin().map_err(to_internal_server_error)?;
         tx.update(&id, &Map { difficulty, ..map })
             .map_err(to_internal_server_error)?;
@@ -415,13 +435,11 @@ async fn create_map(_key: ApiKey, data: Json<CreateMapData<'_>>) -> Result<(), C
 
     std::fs::create_dir_all(&dir).map_err(to_internal_server_error)?;
 
-    let name = data.name.to_lowercase();
+    let mut name = data.name.to_lowercase();
 
-    let name = if name.ends_with(".map") {
-        name[0..name.len() - 4].to_string()
-    } else {
-        name
-    };
+    if name.ends_with(".map") {
+        name = name[0..name.len() - 4].to_string()
+    }
 
     std::fs::write(dir.join(&format!("{}.map", name)), file).map_err(to_internal_server_error)?;
 
