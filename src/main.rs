@@ -134,7 +134,7 @@ fn add_or_update_map(
     state: State,
 ) -> Result<(), StructsyError> {
     let my_data = Map {
-        name,
+        name: name.to_lowercase(),
         difficulty,
         state,
     };
@@ -289,7 +289,8 @@ async fn recall_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), 
 #[openapi]
 #[post("/decline", format = "json", data = "<data>")]
 async fn decline_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), CustomStatus> {
-    if let Some((id, map)) = find_map(&DB, data.name) {
+    //TODO: Delete Map after 3Days from all Testservers
+    if let Some((id, map)) = find_map(&DB, &data.name.to_lowercase()) {
         if [State::Approved, State::New].contains(&map.state) {
             let mut tx = DB.begin().map_err(to_internal_server_error)?;
             tx.update(
@@ -378,7 +379,7 @@ async fn approve_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
             Ok(())
         } else if map.state == State::Approved {
             Err(to_custom_bad_request(
-                "This map is already declined!".to_string()
+                "This map is already Approved!".to_string()
             ))
         } else {
             Err(to_custom_bad_request(format!(
@@ -402,9 +403,10 @@ async fn change_map_difficulty(
     data: Json<ChangeMapDifficultyData<'_>>,
 ) -> Result<(), CustomStatus> {
     let difficulty = Difficulty::from_str(data.difficulty).map_err(to_bad_request)?;
-
+    
     if let Some((id, map)) = find_map(&DB, data.name) {
         let mut tx = DB.begin().map_err(to_internal_server_error)?;
+       
         tx.update(&id, &Map { difficulty, ..map })
             .map_err(to_internal_server_error)?;
         tx.commit().map_err(to_internal_server_error)?;
