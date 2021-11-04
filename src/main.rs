@@ -277,6 +277,14 @@ async fn recall_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), 
         )
         .map_err(to_internal_server_error)?;
         tx.commit().map_err(to_internal_server_error)?;
+
+        if map.state == State::Published {
+            let source_dir = CONFIG.public_map_folder.join(map.difficulty);
+            let target_dir = CONFIG.test_map_folder.join("test");
+
+            std::fs::create_dir_all(&target_dir).map_err(to_internal_server_error)?;
+            move_map(source_dir.join(map.name), target_dir.join(map.name))?;
+        }
         Ok(())
     } else {
         Err(to_map_not_found_error(format!(
@@ -337,10 +345,12 @@ async fn publish_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
             )
             .map_err(to_internal_server_error)?;
             tx.commit().map_err(to_internal_server_error)?;
+
             let source_dir = CONFIG.test_map_folder.join("test");
             let target_dir = CONFIG.public_map_folder.join(map.difficulty);
+
             std::fs::create_dir_all(&target_dir).map_err(to_internal_server_error)?;
-            move_map(source_dir.join(map.name), target_dir.join(map.nam))?;
+            move_map(source_dir.join(map.name), target_dir.join(map.name))?;
             Ok(())
         } else if State::Published == map.state {
             Err(to_custom_bad_request(
