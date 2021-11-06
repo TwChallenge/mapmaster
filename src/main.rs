@@ -66,17 +66,25 @@ fn map_to_test_vote_string(map: &Map) -> String {
         Difficulty::Insane => format!("{: <8}", difficulty),
         _ => format!("{: <9}", difficulty),
     };
-    format!("add_vote \"{} {} {}\" \"change_map \\\"{}\\\"\"", approved, difficulty, map.name, map.name)
+    format!(
+        "add_vote \"{} {} {}\" \"change_map \\\"{}\\\"\"",
+        approved, difficulty, map.name, map.name
+    )
 }
 
 fn map_to_vote_string(map: &Map) -> String {
-    format!("add_vote \"{}\" \"change_map \\\"{}\\\"\"", map.name, map.name)
+    format!(
+        "add_vote \"{}\" \"change_map \\\"{}\\\"\"",
+        map.name, map.name
+    )
 }
 
 fn generate_test_votes(maps: &[Map]) -> String {
-    maps.iter().map(map_to_test_vote_string).collect::<Vec<_>>().join("\n")
+    maps.iter()
+        .map(map_to_test_vote_string)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
-
 
 fn generate_published_votes(maps: &[Map]) -> String {
     let new = maps.iter().take(6);
@@ -97,7 +105,7 @@ fn update_votes(db: &Structsy) -> Result<(), CustomStatus> {
     let mut hard = Vec::new();
     let mut insane = Vec::new();
     for map in query.map(|(_id, map)| map) {
-        if [State::New, State::Approved, State::Declined].contains(&map.state)  {
+        if [State::New, State::Approved, State::Declined].contains(&map.state) {
             test.push(map);
         } else if map.state == State::Published {
             use Difficulty::*;
@@ -129,11 +137,31 @@ fn update_votes(db: &Structsy) -> Result<(), CustomStatus> {
     std::fs::create_dir_all(&hard_folder).map_err(to_internal_server_error)?;
     std::fs::create_dir_all(&insane_folder).map_err(to_internal_server_error)?;
 
-    std::fs::write(CONFIG.test_map_folder.join("votes.cfg"), generate_test_votes(&test)).map_err(to_internal_server_error)?;
-    std::fs::write(easy_folder.join("votes.cfg"), generate_published_votes(&easy)).map_err(to_internal_server_error)?;
-    std::fs::write(main_folder.join("votes.cfg"), generate_published_votes(&main)).map_err(to_internal_server_error)?;
-    std::fs::write(hard_folder.join("votes.cfg"), generate_published_votes(&hard)).map_err(to_internal_server_error)?;
-    std::fs::write(insane_folder.join("votes.cfg"), generate_published_votes(&insane)).map_err(to_internal_server_error)?;
+    std::fs::write(
+        CONFIG.test_map_folder.join("votes.cfg"),
+        generate_test_votes(&test),
+    )
+    .map_err(to_internal_server_error)?;
+    std::fs::write(
+        easy_folder.join("votes.cfg"),
+        generate_published_votes(&easy),
+    )
+    .map_err(to_internal_server_error)?;
+    std::fs::write(
+        main_folder.join("votes.cfg"),
+        generate_published_votes(&main),
+    )
+    .map_err(to_internal_server_error)?;
+    std::fs::write(
+        hard_folder.join("votes.cfg"),
+        generate_published_votes(&hard),
+    )
+    .map_err(to_internal_server_error)?;
+    std::fs::write(
+        insane_folder.join("votes.cfg"),
+        generate_published_votes(&insane),
+    )
+    .map_err(to_internal_server_error)?;
 
     Ok(())
 }
@@ -229,8 +257,7 @@ trait MapByName {
 }
 
 #[queries(Map)]
-trait MapByState {
-}
+trait MapByState {}
 
 fn find_map(db: &Structsy, name: &str) -> Option<(Ref<Map>, Map)> {
     let query = db.query::<Map>().by_name(&name.to_lowercase());
@@ -242,13 +269,20 @@ enum Either<L, R> {
     Right(R),
 }
 
+fn get_current_time() -> Result<u64, Either<StructsyError, Box<dyn std::error::Error>>> {
+    Ok(SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_err(|e| Either::Right(e.into()))?
+        .as_secs())
+}
+
 fn add_or_update_map(
     db: &Structsy,
     name: String,
     difficulty: Difficulty,
     state: State,
 ) -> Result<(), Either<StructsyError, Box<dyn std::error::Error>>> {
-    let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_err(|e| Either::Right(e.into()))?.as_secs();
+    let now = get_current_time()?;
     let my_data = Map {
         name: name.to_lowercase(),
         difficulty,
@@ -264,7 +298,8 @@ fn add_or_update_map(
         }
         Some((id, map)) => {
             let mut tx = db.begin().map_err(Either::Left)?;
-            tx.update(&id, &Map { difficulty, ..map }).map_err(Either::Left)?;
+            tx.update(&id, &Map { difficulty, last_changed: now, ..map })
+                .map_err(Either::Left)?;
             tx.commit().map_err(Either::Left)?
         }
     }
@@ -391,6 +426,7 @@ async fn recall_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), 
             &id,
             &Map {
                 state: State::New,
+                last_changed: get_current_time().map_err(either_to_custom_status)?,
                 ..map
             },
         )
@@ -401,7 +437,8 @@ async fn recall_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), 
             let target_dir = &CONFIG.test_map_folder;
 
             std::fs::create_dir_all(&target_dir).map_err(to_internal_server_error)?;
-            move_map(source_dir.join(&map_name), target_dir.join(&map_name)).map_err(to_internal_server_error)?;
+            move_map(source_dir.join(&map_name), target_dir.join(&map_name))
+                .map_err(to_internal_server_error)?;
         }
         tx.commit().map_err(to_internal_server_error)?;
         update_votes(&DB)?;
@@ -425,6 +462,7 @@ async fn decline_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
                 &id,
                 &Map {
                     state: State::Declined,
+                    last_changed: get_current_time().map_err(either_to_custom_status)?,
                     ..map
                 },
             )
@@ -434,7 +472,7 @@ async fn decline_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
             Ok(())
         } else if map.state == State::Declined {
             Err(to_custom_bad_request(
-                "This map is already declined!".to_string()
+                "This map is already declined!".to_string(),
             ))
         } else {
             Err(to_custom_bad_request(format!(
@@ -462,6 +500,7 @@ async fn publish_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
                 &id,
                 &Map {
                     state: State::Published,
+                    last_changed: get_current_time().map_err(either_to_custom_status)?,
                     ..map
                 },
             )
@@ -471,7 +510,8 @@ async fn publish_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
             let target_dir = CONFIG.public_map_folder.join(map.difficulty);
 
             std::fs::create_dir_all(&target_dir).map_err(to_internal_server_error)?;
-            move_map(source_dir.join(&map_name), target_dir.join(&map_name)).map_err(to_internal_server_error)?;
+            move_map(source_dir.join(&map_name), target_dir.join(&map_name))
+                .map_err(to_internal_server_error)?;
             tx.commit().map_err(to_internal_server_error)?;
             update_votes(&DB)?;
             Ok(())
@@ -504,6 +544,7 @@ async fn approve_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
                 &id,
                 &Map {
                     state: State::Approved,
+                    last_changed: get_current_time().map_err(either_to_custom_status)?,
                     ..map
                 },
             )
@@ -513,7 +554,7 @@ async fn approve_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
             Ok(())
         } else if map.state == State::Approved {
             Err(to_custom_bad_request(
-                "This map is already Approved!".to_string()
+                "This map is already Approved!".to_string(),
             ))
         } else {
             Err(to_custom_bad_request(format!(
@@ -537,12 +578,19 @@ async fn change_map_difficulty(
     data: Json<ChangeMapDifficultyData<'_>>,
 ) -> Result<(), CustomStatus> {
     let difficulty = Difficulty::from_str(data.difficulty).map_err(to_bad_request)?;
-    
+
     if let Some((id, map)) = find_map(&DB, data.name) {
         let mut tx = DB.begin().map_err(to_internal_server_error)?;
-       
-        tx.update(&id, &Map { difficulty, ..map })
-            .map_err(to_internal_server_error)?;
+
+        tx.update(
+            &id,
+            &Map {
+                difficulty,
+                last_changed: get_current_time().map_err(either_to_custom_status)?,
+                ..map
+            },
+        )
+        .map_err(to_internal_server_error)?;
         tx.commit().map_err(to_internal_server_error)?;
         update_votes(&DB)?;
         Ok(())
@@ -551,6 +599,16 @@ async fn change_map_difficulty(
             "Map \"{}\" not found!",
             data.name
         )))
+    }
+}
+
+fn either_to_custom_status(
+    either: Either<StructsyError, Box<dyn std::error::Error>>,
+) -> CustomStatus {
+    use Either::*;
+    match either {
+        Left(l) => to_bad_request(l),
+        Right(r) => to_internal_server_error(r),
     }
 }
 
@@ -579,12 +637,7 @@ async fn create_map(_key: ApiKey, data: Json<CreateMapData<'_>>) -> Result<(), C
 
     std::fs::write(dir.join(&format!("{}.map", name)), file).map_err(to_internal_server_error)?;
 
-    use Either::*;
-
-    let res = add_or_update_map(&DB, name, difficulty, State::New).map_err(|e| match e {
-        Left(l) => to_bad_request(l),
-        Right(r) => to_internal_server_error(r),
-    });
+    let res = add_or_update_map(&DB, name, difficulty, State::New).map_err(either_to_custom_status);
 
     update_votes(&DB)?;
 
