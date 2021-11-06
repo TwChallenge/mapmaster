@@ -4,7 +4,7 @@ use structopt::StructOpt;
 #[derive(StructOpt, Debug)]
 pub struct Options {
     /// The folder to use as a base for all test maps.
-    #[structopt(short, long, name = "test directory", default_value = "./maps")]
+    #[structopt(short, long, name = "test directory", default_value = "./maps/test")]
     pub test_maps: PathBuf,
 
     /// The folder to use as a base for all published maps.

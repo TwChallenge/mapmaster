@@ -55,6 +55,89 @@ lazy_static! {
     };
 }
 
+fn map_to_test_vote_string(map: &Map) -> String {
+    let approved = match map.state {
+        State::Approved => "☑",
+        State::Declined => "☒",
+        _ => "🆕",
+    };
+    let difficulty = format!("[{}]", map.difficulty);
+    let difficulty = match map.difficulty {
+        Difficulty::Insane => format!("{: <8}", difficulty),
+        _ => format!("{: <9}", difficulty),
+    };
+    format!("add_vote \"{} {} {}\" \"change_map \\\"{}\\\"\"", approved, difficulty, map.name, map.name)
+}
+
+fn map_to_vote_string(map: &Map) -> String {
+    format!("add_vote \"{}\" \"change_map \\\"{}\\\"\"", map.name, map.name)
+}
+
+fn generate_test_votes(maps: &[Map]) -> String {
+    maps.iter().map(map_to_test_vote_string).collect::<Vec<_>>().join("\n")
+}
+
+
+fn generate_published_votes(maps: &[Map]) -> String {
+    let new = maps.iter().take(6);
+    let mut other = maps.iter().skip(6).collect::<Vec<_>>();
+    other.sort_by_key(|m| &m.name);
+    let mut text = vec!["add_vote \"─── NEW MAPS ───\" \"info\"".to_string()];
+    text.extend(new.map(map_to_vote_string));
+    text.push("add_vote \"────────────────\" \"info\"".to_string());
+    text.extend(other.into_iter().map(map_to_vote_string));
+    text.join("\n")
+}
+
+fn update_votes(db: &Structsy) -> Result<(), CustomStatus> {
+    let query = db.query::<Map>().fetch();
+    let mut test = Vec::new();
+    let mut easy = Vec::new();
+    let mut main = Vec::new();
+    let mut hard = Vec::new();
+    let mut insane = Vec::new();
+    for map in query.map(|(_id, map)| map) {
+        if [State::New, State::Approved, State::Declined].contains(&map.state)  {
+            test.push(map);
+        } else if map.state == State::Published {
+            use Difficulty::*;
+            match map.difficulty {
+                Easy => easy.push(map),
+                Main => main.push(map),
+                Hard => hard.push(map),
+                Insane => insane.push(map),
+            }
+        }
+    }
+
+    test.sort_by_key(Map::created_at);
+    easy.sort_by_key(Map::created_at);
+    main.sort_by_key(Map::created_at);
+    hard.sort_by_key(Map::created_at);
+    insane.sort_by_key(Map::created_at);
+
+    std::fs::create_dir_all(&CONFIG.test_map_folder).map_err(to_internal_server_error)?;
+
+    let base = &CONFIG.public_map_folder;
+    let easy_folder = base.join(Difficulty::Easy);
+    let main_folder = base.join(Difficulty::Main);
+    let hard_folder = base.join(Difficulty::Hard);
+    let insane_folder = base.join(Difficulty::Insane);
+
+    std::fs::create_dir_all(&easy_folder).map_err(to_internal_server_error)?;
+    std::fs::create_dir_all(&main_folder).map_err(to_internal_server_error)?;
+    std::fs::create_dir_all(&hard_folder).map_err(to_internal_server_error)?;
+    std::fs::create_dir_all(&insane_folder).map_err(to_internal_server_error)?;
+
+    std::fs::write(CONFIG.test_map_folder.join("votes.cfg"), generate_test_votes(&test)).map_err(to_internal_server_error)?;
+    std::fs::write(easy_folder.join("votes.cfg"), generate_published_votes(&easy)).map_err(to_internal_server_error)?;
+    std::fs::write(main_folder.join("votes.cfg"), generate_published_votes(&main)).map_err(to_internal_server_error)?;
+    std::fs::write(hard_folder.join("votes.cfg"), generate_published_votes(&hard)).map_err(to_internal_server_error)?;
+    std::fs::write(insane_folder.join("votes.cfg"), generate_published_votes(&insane)).map_err(to_internal_server_error)?;
+
+    Ok(())
+}
+
 #[derive(
     Serialize,
     Deserialize,
@@ -74,6 +157,18 @@ enum Difficulty {
     Main,
     Hard,
     Insane,
+}
+
+impl std::fmt::Display for Difficulty {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use Difficulty::*;
+        match self {
+            Easy => write!(f, "Easy"),
+            Main => write!(f, "Main"),
+            Hard => write!(f, "Hard"),
+            Insane => write!(f, "Insane"),
+        }
+    }
 }
 
 impl AsRef<Path> for Difficulty {
@@ -117,11 +212,24 @@ struct Map {
     difficulty: Difficulty,
     state: State,
     created_at: u64,
+    last_changed: u64,
+}
+
+impl Map {
+    fn created_at(&self) -> u64 {
+        self.created_at
+    }
 }
 
 #[queries(Map)]
 trait MapByName {
     fn by_name(self, name: &str) -> Self;
+    fn by_state(self, #[allow(unused)] state: &State) -> Self;
+    fn by_difficulty(self, #[allow(unused)] difficulty: &Difficulty) -> Self;
+}
+
+#[queries(Map)]
+trait MapByState {
 }
 
 fn find_map(db: &Structsy, name: &str) -> Option<(Ref<Map>, Map)> {
@@ -140,11 +248,13 @@ fn add_or_update_map(
     difficulty: Difficulty,
     state: State,
 ) -> Result<(), Either<StructsyError, Box<dyn std::error::Error>>> {
+    let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_err(|e| Either::Right(e.into()))?.as_secs();
     let my_data = Map {
         name: name.to_lowercase(),
         difficulty,
         state,
-        created_at: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_err(|e| Either::Right(e.into()))?.as_secs(),
+        created_at: now,
+        last_changed: now,
     };
     match find_map(db, &my_data.name) {
         None => {
@@ -288,12 +398,13 @@ async fn recall_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), 
 
         if map.state == State::Published {
             let source_dir = CONFIG.public_map_folder.join(map.difficulty);
-            let target_dir = CONFIG.test_map_folder.join("test");
+            let target_dir = &CONFIG.test_map_folder;
 
             std::fs::create_dir_all(&target_dir).map_err(to_internal_server_error)?;
             move_map(source_dir.join(&map_name), target_dir.join(&map_name)).map_err(to_internal_server_error)?;
         }
         tx.commit().map_err(to_internal_server_error)?;
+        update_votes(&DB)?;
         Ok(())
     } else {
         Err(to_map_not_found_error(format!(
@@ -319,6 +430,7 @@ async fn decline_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
             )
             .map_err(to_internal_server_error)?;
             tx.commit().map_err(to_internal_server_error)?;
+            update_votes(&DB)?;
             Ok(())
         } else if map.state == State::Declined {
             Err(to_custom_bad_request(
@@ -355,12 +467,13 @@ async fn publish_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
             )
             .map_err(to_internal_server_error)?;
 
-            let source_dir = CONFIG.test_map_folder.join("test");
+            let source_dir = &CONFIG.test_map_folder;
             let target_dir = CONFIG.public_map_folder.join(map.difficulty);
 
             std::fs::create_dir_all(&target_dir).map_err(to_internal_server_error)?;
             move_map(source_dir.join(&map_name), target_dir.join(&map_name)).map_err(to_internal_server_error)?;
             tx.commit().map_err(to_internal_server_error)?;
+            update_votes(&DB)?;
             Ok(())
         } else if State::Published == map.state {
             Err(to_custom_bad_request(
@@ -396,6 +509,7 @@ async fn approve_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
             )
             .map_err(to_internal_server_error)?;
             tx.commit().map_err(to_internal_server_error)?;
+            update_votes(&DB)?;
             Ok(())
         } else if map.state == State::Approved {
             Err(to_custom_bad_request(
@@ -430,6 +544,7 @@ async fn change_map_difficulty(
         tx.update(&id, &Map { difficulty, ..map })
             .map_err(to_internal_server_error)?;
         tx.commit().map_err(to_internal_server_error)?;
+        update_votes(&DB)?;
         Ok(())
     } else {
         Err(to_map_not_found_error(format!(
@@ -450,7 +565,7 @@ async fn create_map(_key: ApiKey, data: Json<CreateMapData<'_>>) -> Result<(), C
         .await
         .map_err(to_bad_request)?;
 
-    let dir = CONFIG.test_map_folder.join("test");
+    let dir = &CONFIG.test_map_folder;
 
     std::fs::create_dir_all(&dir).map_err(to_internal_server_error)?;
 
@@ -466,16 +581,23 @@ async fn create_map(_key: ApiKey, data: Json<CreateMapData<'_>>) -> Result<(), C
 
     use Either::*;
 
-    add_or_update_map(&DB, name, difficulty, State::New).map_err(|e| match e {
+    let res = add_or_update_map(&DB, name, difficulty, State::New).map_err(|e| match e {
         Left(l) => to_bad_request(l),
         Right(r) => to_internal_server_error(r),
-    })
+    });
+
+    update_votes(&DB)?;
+
+    res
 }
 
 #[launch]
 fn rocket() -> _ {
     // this is needed in order to display help texts, because they dont work in lazy_static
     let _ = Options::from_args();
+
+    let _ = update_votes(&DB);
+
     rocket::build()
         .mount(
             "/",
