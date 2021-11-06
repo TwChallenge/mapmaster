@@ -3,11 +3,11 @@ pipeline {
         docker { image 'rust:latest' }
     }
     stages {
-        stage('Test') {
-            steps {
-                sh 'cargo test'
-            }
-        }
+        /* stage('Test') { */
+        /*     steps { */
+        /*         sh 'cargo test' */
+        /*     } */
+        /* } */
         stage('Build') {
             steps {
                 sh 'cargo build --release'
