@@ -74,8 +74,8 @@ fn map_to_test_vote_string(map: &Map) -> String {
 
 fn map_to_vote_string(map: &Map) -> String {
     format!(
-        "add_vote \"{}\" \"change_map \\\"{}\\\"\"",
-        map.name, map.name
+        "add_vote \"{}\" \"change_map \\\"{}/{}\\\"\"",
+        map.name, map.difficulty, map.name
     )
 }
 
