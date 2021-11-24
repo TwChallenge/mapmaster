@@ -41,6 +41,7 @@ jobs:
           args: -- -D warnings
 
       - uses: actions/upload-artifact@v2
+        if: ${{ matrix.rust == 'stable' }}
         with:
           name: mapmaster
           path: target/release/mapmaster
