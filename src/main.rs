@@ -75,9 +75,10 @@ fn map_to_test_vote_string(map: &Map) -> String {
 fn map_to_vote_string(map: &Map) -> String {
     format!(
         "add_vote \"{}\" \"change_map \\\"{}/{}\\\"\"",
-        map.name, map.difficulty.to_string().to_lowercase(), map.name
+        map.name,
+        map.difficulty.to_string().to_lowercase(),
+        map.name
     )
-   
 }
 
 fn generate_test_votes(maps: &[Map]) -> String {
@@ -299,8 +300,15 @@ fn add_or_update_map(
         }
         Some((id, map)) => {
             let mut tx = db.begin().map_err(Either::Left)?;
-            tx.update(&id, &Map { difficulty, last_changed: now, ..map })
-                .map_err(Either::Left)?;
+            tx.update(
+                &id,
+                &Map {
+                    difficulty,
+                    last_changed: now,
+                    ..map
+                },
+            )
+            .map_err(Either::Left)?;
             tx.commit().map_err(Either::Left)?
         }
     }
