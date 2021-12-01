@@ -25,7 +25,10 @@ pub struct MyError {
 pub fn bad_request() -> MyError {
     MyError {
         err: "Bad Request".to_owned(),
-        msg: Some("The request given is wrongly formatted or data was missing.".to_owned()),
+        msg: Some(
+            "The request given is wrongly formatted or data was missing."
+                .to_owned(),
+        ),
         http_status_code: 400,
     }
 }
@@ -34,7 +37,10 @@ pub fn bad_request() -> MyError {
 pub fn unauthorized() -> MyError {
     MyError {
         err: "Unauthorized".to_owned(),
-        msg: Some("The authentication given was incorrect or insufficient.".to_owned()),
+        msg: Some(
+            "The authentication given was incorrect or insufficient."
+                .to_owned(),
+        ),
         http_status_code: 401,
     }
 }
@@ -43,7 +49,9 @@ pub fn unauthorized() -> MyError {
 ///
 /// Putting this in a separate function somewhere will resolve issues like
 /// <https://github.com/GREsau/okapi/issues/57>
-pub fn bad_request_response(gen: &mut OpenApiGenerator) -> okapi::openapi3::Response {
+pub fn bad_request_response(
+    gen: &mut OpenApiGenerator,
+) -> okapi::openapi3::Response {
     let schema = gen.json_schema::<MyError>();
     okapi::openapi3::Response {
         description: "\
@@ -61,7 +69,9 @@ pub fn bad_request_response(gen: &mut OpenApiGenerator) -> okapi::openapi3::Resp
     }
 }
 
-pub fn unauthorized_response(gen: &mut OpenApiGenerator) -> okapi::openapi3::Response {
+pub fn unauthorized_response(
+    gen: &mut OpenApiGenerator,
+) -> okapi::openapi3::Response {
     let schema = gen.json_schema::<MyError>();
     okapi::openapi3::Response {
         description: "\
@@ -92,7 +102,9 @@ impl<'r> Responder<'r, 'static> for MyError {
 }
 
 impl OpenApiResponderInner for MyError {
-    fn responses(gen: &mut OpenApiGenerator) -> Result<Responses, OpenApiError> {
+    fn responses(
+        gen: &mut OpenApiGenerator,
+    ) -> Result<Responses, OpenApiError> {
         use okapi::openapi3::RefOr;
         Ok(Responses {
             responses: okapi::map! {

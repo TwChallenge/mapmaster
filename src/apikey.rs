@@ -29,10 +29,16 @@ impl<'a> FromRequest<'a> for ApiKey {
                     if crate::CONFIG.apikeys.iter().any(|k| k == key) {
                         Outcome::Success(ApiKey(key.to_owned()))
                     } else {
-                        Outcome::Failure((Status::Unauthorized, "Api key is invalid."))
+                        Outcome::Failure((
+                            Status::Unauthorized,
+                            "Api key is invalid.",
+                        ))
                     }
                 }
-                None => Outcome::Failure((Status::BadRequest, "Missing `x-api-key` header.")),
+                None => Outcome::Failure((
+                    Status::BadRequest,
+                    "Missing `x-api-key` header.",
+                )),
             }
         }
     }
@@ -68,7 +74,9 @@ impl<'a> OpenApiFromRequest<'a> for ApiKey {
 
     // Optionally add responses
     // Also see `main.rs` part of this.
-    fn get_responses(gen: &mut OpenApiGenerator) -> rocket_okapi::Result<Responses> {
+    fn get_responses(
+        gen: &mut OpenApiGenerator,
+    ) -> rocket_okapi::Result<Responses> {
         use rocket_okapi::okapi::openapi3::RefOr;
         // Can switch between to the but both are checked if they compile correctly
         let use_method = "recommended";

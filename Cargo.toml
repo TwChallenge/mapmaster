@@ -6,16 +6,18 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-lazy_static = "1.4.0"
 rocket = "0.5.0-rc.1"
 structopt = "0.3.25"
 structsy = "0.4.0"
 structsy-derive = "0.4.0"
 okapi = "0.7.0-rc.1"
 rocket_okapi = { version = "0.8.0-rc.1", features = ["rapidoc"] }
-schemars = "0.8.6"
+schemars = "0.8.8"
 serde = { version = "1.0.130", features = ["derive"] }
-serde_json = "1.0.68"
-strum = { version = "0.22", features = ["derive"] }
-derive_more = "0.99.16"
-reqwest = "0.11.6"
+serde_json = "1.0.72"
+strum = { version = "0.23.0", features = ["derive"] }
+derive_more = "0.99.17"
+reqwest = "0.11.7"
+lazy_static = "1.4.0"
+# fort = "0.4.0"
+# bastion = "0.4.4"
