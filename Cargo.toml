@@ -2,6 +2,11 @@
 name = "mapmaster"
 version = "0.1.0"
 edition = "2018"
+description = "Our tool to manage teeworlds maps in a distributed manner."
+license-file = "LICENSE"
+documentation = "README.md"
+homepage = "https://github.com/TwChallenge/mapmaster"
+repository =  "https://github.com/TwChallenge/mapmaster"
 publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
