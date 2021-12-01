@@ -454,8 +454,7 @@ async fn recall_map(
         .map_err(to_internal_server_error)?;
 
         if map.state == MapState::Published {
-            let source_dir =
-                CONFIG.public_map_folder.join(map.difficulty);
+            let source_dir = CONFIG.public_map_folder.join(map.difficulty);
             let target_dir = &CONFIG.test_map_folder;
 
             std::fs::create_dir_all(&target_dir)
@@ -540,8 +539,7 @@ async fn publish_map(
             .map_err(to_internal_server_error)?;
 
             let source_dir = &CONFIG.test_map_folder;
-            let target_dir =
-                CONFIG.public_map_folder.join(map.difficulty);
+            let target_dir = CONFIG.public_map_folder.join(map.difficulty);
 
             std::fs::create_dir_all(&target_dir)
                 .map_err(to_internal_server_error)?;
