@@ -8,20 +8,19 @@ documentation = "README.md"
 homepage = "https://github.com/TwChallenge/mapmaster"
 repository =  "https://github.com/TwChallenge/mapmaster"
 publish = false
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rocket = "0.5.0-rc.1"
-structopt = "0.3.25"
-structsy = "0.4.0"
-structsy-derive = "0.4.0"
+derive_more = "0.99.17"
+lazy_static = "1.4.0"
 okapi = "0.7.0-rc.1"
+reqwest = "0.11.7"
+rocket = "0.5.0-rc.1"
 rocket_okapi = { version = "0.8.0-rc.1", features = ["rapidoc"] }
 schemars = "0.8.8"
 serde = { version = "1.0.130", features = ["derive"] }
 serde_json = "1.0.72"
+structopt = "0.3.25"
+structsy = "0.4.0"
+structsy-derive = "0.4.0"
 strum = { version = "0.23.0", features = ["derive"] }
-derive_more = "0.99.17"
-reqwest = "0.11.7"
-lazy_static = "1.4.0"
