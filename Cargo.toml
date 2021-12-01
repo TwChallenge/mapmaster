@@ -24,3 +24,8 @@ structopt = "0.3.25"
 structsy = "0.4.0"
 structsy-derive = "0.4.0"
 strum = { version = "0.23.0", features = ["derive"] }
+bastion = { git = "https://github.com/bastion-rs/bastion", rev = "01eeb5861abeba8f36001f453353f0ee8101b811", features = ["tokio-runtime"] }
+fort = "0.4.0"
+
+[patch.crates-io]
+lever = { path = "patch/lever" }
