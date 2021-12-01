@@ -19,5 +19,3 @@ strum = { version = "0.23.0", features = ["derive"] }
 derive_more = "0.99.17"
 reqwest = "0.11.7"
 lazy_static = "1.4.0"
-# fort = "0.4.0"
-# bastion = "0.4.4"
