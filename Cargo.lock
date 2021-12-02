@@ -8,22 +8,11 @@ version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0b98a97b13a75d90ab4abfcdb5268330c8392ab03a357bdab0fa9c36ccb1c6a"
 dependencies = [
- "bastion-executor 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bastion-executor",
  "cfg_aliases",
- "lightproc 0.3.5",
+ "lightproc",
  "once_cell",
  "pin-project",
-]
-
-[[package]]
-name = "ahash"
-version = "0.7.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcb51a0695d8f838b1ee009b3fbf66bda078cd64590202a864a8f3e8c4315c47"
-dependencies = [
- "getrandom",
- "once_cell",
- "version_check",
 ]
 
 [[package]]
@@ -46,12 +35,6 @@ name = "arrayvec"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
-
-[[package]]
-name = "arrayvec"
-version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8da52d66c7071e2e3fa2a1e5c6d088fec47b593032b254f5e980de8ea54454d6"
 
 [[package]]
 name = "async-mutex"
@@ -134,29 +117,26 @@ checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
 name = "bastion"
-version = "0.4.5-alpha.0"
-source = "git+https://github.com/bastion-rs/bastion?rev=01eeb5861abeba8f36001f453353f0ee8101b811#01eeb5861abeba8f36001f453353f0ee8101b811"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "98f4436af3631317f6c36e5b689eed30f262c60eb69fb769007f06f3b76b7173"
 dependencies = [
  "anyhow",
  "async-mutex",
- "bastion-executor 0.4.1 (git+https://github.com/bastion-rs/bastion.git)",
+ "bastion-executor",
  "crossbeam-queue",
  "futures",
  "futures-timer",
  "fxhash",
- "lasso",
  "lazy_static",
  "lever",
- "lightproc 0.3.6-alpha.0",
- "log",
+ "lightproc",
  "nuclei",
- "once_cell",
  "pin-utils",
  "serde",
  "serde_json",
- "thiserror",
  "tracing",
- "tracing-subscriber",
+ "tracing-subscriber 0.2.25",
  "uuid",
 ]
 
@@ -166,7 +146,7 @@ version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27dc6c4dc1295a173dd6043f87cd7c27245802cfecc8ad7b929760d73e193f5a"
 dependencies = [
- "arrayvec 0.5.2",
+ "arrayvec",
  "bastion-utils",
  "crossbeam-channel",
  "crossbeam-epoch",
@@ -176,34 +156,10 @@ dependencies = [
  "lazy_static",
  "lever",
  "libc",
- "lightproc 0.3.5",
+ "lightproc",
  "num_cpus",
  "once_cell",
  "pin-utils",
- "tracing",
- "winapi",
-]
-
-[[package]]
-name = "bastion-executor"
-version = "0.4.1"
-source = "git+https://github.com/bastion-rs/bastion.git#01eeb5861abeba8f36001f453353f0ee8101b811"
-dependencies = [
- "arrayvec 0.7.2",
- "bastion-utils",
- "crossbeam-channel",
- "crossbeam-epoch",
- "crossbeam-queue",
- "crossbeam-utils 0.8.5",
- "futures-timer",
- "lazy_static",
- "lever",
- "libc",
- "lightproc 0.3.6-alpha.0",
- "num_cpus",
- "once_cell",
- "pin-utils",
- "tokio",
  "tracing",
  "winapi",
 ]
@@ -267,6 +223,18 @@ name = "cfg_aliases"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd16c4719339c4530435d38e511904438d07cce7950afa3718a84ac36c10e89e"
+
+[[package]]
+name = "chrono"
+version = "0.4.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "670ad68c9088c2a963aaa298cb369688cf3f9465ce5e2d4ca10e6e0098a1ce73"
+dependencies = [
+ "libc",
+ "num-integer",
+ "num-traits",
+ "winapi",
+]
 
 [[package]]
 name = "clap"
@@ -424,16 +392,6 @@ dependencies = [
  "darling_core",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "dashmap"
-version = "4.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e77a43b28d0668df09411cb0bc9a8c2adc40f9a048afe863e05fd43251e8e39c"
-dependencies = [
- "cfg-if 1.0.0",
- "num_cpus",
 ]
 
 [[package]]
@@ -745,9 +703,6 @@ name = "hashbrown"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
-dependencies = [
- "ahash",
-]
 
 [[package]]
 name = "heck"
@@ -912,16 +867,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lasso"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aeb7b21a526375c5ca55f1a6dfd4e1fad9fa4edd750f530252a718a44b2608f0"
-dependencies = [
- "dashmap",
- "hashbrown",
-]
-
-[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -929,7 +874,9 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "lever"
-version = "0.1.1"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa2985caff91d0e31f86cf7f1895d465902624c64ec7ef70efafe1072b4413df"
 dependencies = [
  "anyhow",
  "crossbeam-epoch",
@@ -954,15 +901,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebf7c202c4da35d579058d845fad7b62d3aff5fcb10c5a57fc175ac632874de0"
 dependencies = [
  "crossbeam-utils 0.7.2",
- "pin-utils",
-]
-
-[[package]]
-name = "lightproc"
-version = "0.3.6-alpha.0"
-source = "git+https://github.com/bastion-rs/bastion.git#01eeb5861abeba8f36001f453353f0ee8101b811"
-dependencies = [
- "crossbeam-utils 0.8.5",
  "pin-utils",
 ]
 
@@ -1002,7 +940,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
- "tracing-subscriber",
+ "tracing-subscriber 0.3.3",
 ]
 
 [[package]]
@@ -1024,6 +962,15 @@ dependencies = [
  "structsy",
  "structsy-derive",
  "strum",
+]
+
+[[package]]
+name = "matchers"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f099785f7595cc4b4553a174ce30dd7589ef93391ff414dbb67f62392b9e0ce1"
+dependencies = [
+ "regex-automata",
 ]
 
 [[package]]
@@ -1146,6 +1093,16 @@ dependencies = [
  "once_cell",
  "pin-utils",
  "socket2 0.3.19",
+]
+
+[[package]]
+name = "num-integer"
+version = "0.1.44"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2cc698a63b549a70bc047073d2949cce27cd1c7b0a4a862d08a8031bc2801db"
+dependencies = [
+ "autocfg",
+ "num-traits",
 ]
 
 [[package]]
@@ -2297,6 +2254,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "tracing-serde"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb65ea441fbb84f9f6748fd496cf7f63ec9af5bca94dd86456978d055e8eb28b"
+dependencies = [
+ "serde",
+ "tracing-core",
+]
+
+[[package]]
+name = "tracing-subscriber"
+version = "0.2.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e0d2eaa99c3c2e41547cfa109e910a68ea03823cccad4a0525dcbc9b01e8c71"
+dependencies = [
+ "ansi_term",
+ "chrono",
+ "lazy_static",
+ "matchers 0.0.1",
+ "regex",
+ "serde",
+ "serde_json",
+ "sharded-slab",
+ "smallvec",
+ "thread_local",
+ "tracing",
+ "tracing-core",
+ "tracing-log",
+ "tracing-serde",
+]
+
+[[package]]
 name = "tracing-subscriber"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2304,7 +2293,7 @@ checksum = "245da694cc7fc4729f3f418b304cb57789f1bed2a78c575407ab8a23f53cb4d3"
 dependencies = [
  "ansi_term",
  "lazy_static",
- "matchers",
+ "matchers 0.1.0",
  "regex",
  "sharded-slab",
  "smallvec",
