@@ -1,29 +1,46 @@
 #[macro_use]
 extern crate rocket;
 
+#[allow(unused_imports)]
+use anyhow::Result as AnyResult;
+use bastion::{
+    answer,
+    message::MessageHandler,
+    msg,
+    prelude::{BastionContext, ChildRef, ChildrenRef, SupervisorRef},
+    run,
+    supervisor::SupervisionStrategy,
+    Bastion,
+};
 use lazy_static::lazy_static;
 use rocket::http::Status;
 use rocket::serde::{json::Json, Deserialize, Serialize};
+use rocket::State;
 use rocket_okapi::rapidoc::*;
 use rocket_okapi::{openapi, openapi_get_routes, settings::UrlObject};
 use schemars::JsonSchema;
+use std::fmt::Debug;
 use std::path::Path;
 use std::str::FromStr;
 use std::time::SystemTime;
 use structopt::StructOpt;
 use structsy::Ref;
 use structsy::{Structsy, StructsyError, StructsyTx};
-use structsy_derive::{queries, Persistent, PersistentEmbedded};
-use strum::EnumString;
+use structsy_derive::queries;
+use tracing::Level;
 
 mod apikey;
 mod common;
 mod config;
+mod data;
 mod options;
 
 use apikey::ApiKey;
 use config::Config;
+use data::{Difficulty, Map, State as MapState};
 use options::Options;
+
+type UpdateResult = Result<(), Either<StructsyError, Box<dyn std::error::Error>>>;
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "rocket::serde")]
@@ -33,6 +50,15 @@ struct CustomError {
 }
 
 type CustomStatus = (Status, Json<CustomError>);
+struct CustomStatusWrapper(CustomStatus);
+
+impl Debug for CustomStatusWrapper {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("CustomStatusWrapper")
+            .field(&self.0 .0)
+            .finish()
+    }
+}
 
 lazy_static! {
     static ref DB: Structsy = {
@@ -57,8 +83,8 @@ lazy_static! {
 
 fn map_to_test_vote_string(map: &Map) -> String {
     let approved = match map.state {
-        State::Approved => "☑",
-        State::Declined => "☒",
+        MapState::Approved => "☑",
+        MapState::Declined => "☒",
         _ => "🆕",
     };
     let difficulty = format!("[{}]", map.difficulty);
@@ -107,9 +133,9 @@ fn update_votes(db: &Structsy) -> Result<(), CustomStatus> {
     let mut hard = Vec::new();
     let mut insane = Vec::new();
     for map in query.map(|(_id, map)| map) {
-        if [State::New, State::Approved, State::Declined].contains(&map.state) {
+        if [MapState::New, MapState::Approved, MapState::Declined].contains(&map.state) {
             test.push(map);
-        } else if map.state == State::Published {
+        } else if map.state == MapState::Published {
             use Difficulty::*;
             match map.difficulty {
                 Easy => easy.push(map),
@@ -168,83 +194,6 @@ fn update_votes(db: &Structsy) -> Result<(), CustomStatus> {
     Ok(())
 }
 
-#[derive(
-    Serialize,
-    Deserialize,
-    FromFormField,
-    JsonSchema,
-    PersistentEmbedded,
-    Debug,
-    EnumString,
-    PartialEq,
-    Clone,
-    Copy,
-)]
-#[strum(serialize_all = "snake_case")]
-#[serde(rename_all = "snake_case")]
-enum Difficulty {
-    Easy,
-    Main,
-    Hard,
-    Insane,
-}
-
-impl std::fmt::Display for Difficulty {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use Difficulty::*;
-        match self {
-            Easy => write!(f, "Easy"),
-            Main => write!(f, "Main"),
-            Hard => write!(f, "Hard"),
-            Insane => write!(f, "Insane"),
-        }
-    }
-}
-
-impl AsRef<Path> for Difficulty {
-    fn as_ref(&self) -> &Path {
-        use Difficulty::*;
-        let s = match self {
-            Easy => "easy",
-            Main => "main",
-            Hard => "hard",
-            Insane => "insane",
-        };
-        Path::new(s)
-    }
-}
-
-#[derive(
-    Serialize,
-    Deserialize,
-    FromFormField,
-    JsonSchema,
-    PersistentEmbedded,
-    Debug,
-    EnumString,
-    PartialEq,
-    Clone,
-    Copy,
-)]
-#[strum(serialize_all = "snake_case")]
-#[serde(rename_all = "snake_case")]
-enum State {
-    New,
-    Declined,
-    Approved,
-    Published,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema, Persistent, Debug)]
-struct Map {
-    #[index]
-    name: String,
-    difficulty: Difficulty,
-    state: State,
-    created_at: u64,
-    last_changed: u64,
-}
-
 impl Map {
     fn created_at(&self) -> u64 {
         self.created_at
@@ -254,18 +203,19 @@ impl Map {
 #[queries(Map)]
 trait MapByName {
     fn by_name(self, name: &str) -> Self;
-    fn by_state(self, #[allow(unused)] state: &State) -> Self;
+    fn by_state(self, #[allow(unused)] state: &MapState) -> Self;
     fn by_difficulty(self, #[allow(unused)] difficulty: &Difficulty) -> Self;
 }
 
 #[queries(Map)]
-trait MapByState {}
+trait MapByMapState {}
 
 fn find_map(db: &Structsy, name: &str) -> Option<(Ref<Map>, Map)> {
     let query = db.query::<Map>().by_name(&name.to_lowercase());
     query.fetch().next()
 }
 
+#[derive(Debug)]
 enum Either<L, R> {
     Left(L),
     Right(R),
@@ -282,8 +232,8 @@ fn add_or_update_map(
     db: &Structsy,
     name: String,
     difficulty: Difficulty,
-    state: State,
-) -> Result<(), Either<StructsyError, Box<dyn std::error::Error>>> {
+    state: MapState,
+) -> UpdateResult {
     let now = get_current_time()?;
     let my_data = Map {
         name: name.to_lowercase(),
@@ -330,7 +280,7 @@ fn move_map<P: AsRef<Path>>(from: P, to: P) -> Result<(), std::io::Error> {
 fn list_maps(
     _key: ApiKey,
     name: Option<String>,
-    state: Option<State>,
+    state: Option<MapState>,
     difficulty: Option<Difficulty>,
 ) -> Json<Vec<Map>> {
     let query = DB.query::<Map>();
@@ -360,12 +310,19 @@ fn list_maps(
     values.collect::<Vec<_>>().into()
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Deserialize, Clone, JsonSchema, Debug)]
 #[serde(crate = "rocket::serde")]
-struct CreateMapData<'r> {
+struct CreateMapDataJson<'r> {
     name: &'r str,
     difficulty: &'r str,
     url: &'r str,
+}
+
+#[derive(Debug)]
+struct CreateMapData {
+    name: String,
+    difficulty: Difficulty,
+    url: String,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -392,6 +349,10 @@ fn to_bad_request<T: ToString>(e: T) -> CustomStatus {
     )
 }
 
+fn to_bad_request_wrapper<T: ToString>(e: T) -> CustomStatusWrapper {
+    CustomStatusWrapper(to_bad_request(e))
+}
+
 fn to_custom_bad_request(msg: String) -> CustomStatus {
     eprintln!("{}", msg);
     (
@@ -401,6 +362,10 @@ fn to_custom_bad_request(msg: String) -> CustomStatus {
             code: Status::BadRequest.code,
         }),
     )
+}
+
+fn to_custom_bad_request_wrapper(msg: String) -> CustomStatusWrapper {
+    CustomStatusWrapper(to_custom_bad_request(msg))
 }
 
 fn to_internal_server_error<T: ToString>(e: T) -> CustomStatus {
@@ -414,6 +379,10 @@ fn to_internal_server_error<T: ToString>(e: T) -> CustomStatus {
     )
 }
 
+fn to_internal_server_error_wrapper<T: ToString>(e: T) -> CustomStatusWrapper {
+    CustomStatusWrapper(to_internal_server_error(e))
+}
+
 fn to_map_not_found_error<T: ToString>(e: T) -> CustomStatus {
     eprintln!("{}", e.to_string());
     (
@@ -425,6 +394,10 @@ fn to_map_not_found_error<T: ToString>(e: T) -> CustomStatus {
     )
 }
 
+fn to_map_not_found_error_wrapper<T: ToString>(e: T) -> CustomStatusWrapper {
+    CustomStatusWrapper(to_map_not_found_error(e))
+}
+
 #[openapi]
 #[post("/recall", format = "json", data = "<data>")]
 async fn recall_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), CustomStatus> {
@@ -434,14 +407,14 @@ async fn recall_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), 
         tx.update(
             &id,
             &Map {
-                state: State::New,
+                state: MapState::New,
                 last_changed: get_current_time().map_err(either_to_custom_status)?,
                 ..map
             },
         )
         .map_err(to_internal_server_error)?;
 
-        if map.state == State::Published {
+        if map.state == MapState::Published {
             let source_dir = CONFIG.public_map_folder.join(map.difficulty);
             let target_dir = &CONFIG.test_map_folder;
 
@@ -465,12 +438,12 @@ async fn recall_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), 
 async fn decline_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), CustomStatus> {
     //TODO: Delete Map after 3Days from all Testservers
     if let Some((id, map)) = find_map(&DB, &data.name.to_lowercase()) {
-        if [State::Approved, State::New].contains(&map.state) {
+        if [MapState::Approved, MapState::New].contains(&map.state) {
             let mut tx = DB.begin().map_err(to_internal_server_error)?;
             tx.update(
                 &id,
                 &Map {
-                    state: State::Declined,
+                    state: MapState::Declined,
                     last_changed: get_current_time().map_err(either_to_custom_status)?,
                     ..map
                 },
@@ -479,7 +452,7 @@ async fn decline_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
             tx.commit().map_err(to_internal_server_error)?;
             update_votes(&DB)?;
             Ok(())
-        } else if map.state == State::Declined {
+        } else if map.state == MapState::Declined {
             Err(to_custom_bad_request(
                 "This map is already declined!".to_string(),
             ))
@@ -487,7 +460,7 @@ async fn decline_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
             Err(to_custom_bad_request(format!(
                 "Cannot go from state {:?} to {:?}!",
                 map.state,
-                State::Declined
+                MapState::Declined
             )))
         }
     } else {
@@ -502,13 +475,13 @@ async fn decline_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
 #[post("/publish", format = "json", data = "<data>")]
 async fn publish_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), CustomStatus> {
     if let Some((id, map)) = find_map(&DB, data.name) {
-        if State::Approved == map.state {
+        if MapState::Approved == map.state {
             let mut tx = DB.begin().map_err(to_internal_server_error)?;
             let map_name = format!("{}.map", map.name);
             tx.update(
                 &id,
                 &Map {
-                    state: State::Published,
+                    state: MapState::Published,
                     last_changed: get_current_time().map_err(either_to_custom_status)?,
                     ..map
                 },
@@ -524,7 +497,7 @@ async fn publish_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
             tx.commit().map_err(to_internal_server_error)?;
             update_votes(&DB)?;
             Ok(())
-        } else if State::Published == map.state {
+        } else if MapState::Published == map.state {
             Err(to_custom_bad_request(
                 "This map is already published!".to_string(),
             ))
@@ -532,7 +505,7 @@ async fn publish_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
             Err(to_custom_bad_request(format!(
                 "Cannot go from state {:?} to {:?}!",
                 map.state,
-                State::Published
+                MapState::Published
             )))
         }
     } else {
@@ -547,12 +520,12 @@ async fn publish_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
 #[post("/approve", format = "json", data = "<data>")]
 async fn approve_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(), CustomStatus> {
     if let Some((id, map)) = find_map(&DB, data.name) {
-        if [State::Declined, State::New].contains(&map.state) {
+        if [MapState::Declined, MapState::New].contains(&map.state) {
             let mut tx = DB.begin().map_err(to_internal_server_error)?;
             tx.update(
                 &id,
                 &Map {
-                    state: State::Approved,
+                    state: MapState::Approved,
                     last_changed: get_current_time().map_err(either_to_custom_status)?,
                     ..map
                 },
@@ -561,7 +534,7 @@ async fn approve_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
             tx.commit().map_err(to_internal_server_error)?;
             update_votes(&DB)?;
             Ok(())
-        } else if map.state == State::Approved {
+        } else if map.state == MapState::Approved {
             Err(to_custom_bad_request(
                 "This map is already Approved!".to_string(),
             ))
@@ -569,7 +542,7 @@ async fn approve_map(_key: ApiKey, data: Json<JustTheMapName<'_>>) -> Result<(),
             Err(to_custom_bad_request(format!(
                 "Cannot go from state {:?} to {:?}!",
                 map.state,
-                State::Approved
+                MapState::Approved
             )))
         }
     } else {
@@ -623,9 +596,21 @@ fn either_to_custom_status(
 
 #[openapi]
 #[post("/create", format = "json", data = "<data>")]
-async fn create_map(_key: ApiKey, data: Json<CreateMapData<'_>>) -> Result<(), CustomStatus> {
+async fn create_map<'r>(
+    _key: ApiKey,
+    app_state: &State<AppState>,
+    data: Json<CreateMapDataJson<'_>>,
+) -> Result<(), CustomStatus> {
     let difficulty = Difficulty::from_str(data.difficulty).map_err(to_bad_request)?;
-    let file = reqwest::get(data.url)
+    app_state.request(CreateMapData {
+        name: data.name.to_string(),
+        difficulty,
+        url: data.url.to_string(),
+    })
+}
+
+async fn internal_create_map(data: CreateMapData) -> Result<(), CustomStatus> {
+    let file = reqwest::get(&data.url)
         .await
         .map_err(to_bad_request)?
         .bytes()
@@ -635,6 +620,8 @@ async fn create_map(_key: ApiKey, data: Json<CreateMapData<'_>>) -> Result<(), C
     let dir = &CONFIG.test_map_folder;
 
     std::fs::create_dir_all(&dir).map_err(to_internal_server_error)?;
+
+    let dir = &CONFIG.test_map_folder;
 
     let name = data.name.to_lowercase();
 
@@ -646,11 +633,58 @@ async fn create_map(_key: ApiKey, data: Json<CreateMapData<'_>>) -> Result<(), C
 
     std::fs::write(dir.join(&format!("{}.map", name)), file).map_err(to_internal_server_error)?;
 
-    let res = add_or_update_map(&DB, name, difficulty, State::New).map_err(either_to_custom_status);
+    let res = add_or_update_map(&DB, name, data.difficulty, MapState::New)
+        .map_err(either_to_custom_status);
 
     update_votes(&DB)?;
 
     res
+}
+
+async fn child_task(ctx: BastionContext) -> Result<(), ()> {
+    loop {
+        msg! {
+            ctx.recv().await?,
+            data: CreateMapData =!> {
+                answer!(ctx, internal_create_map(data).await.map_err(|err| CustomStatusWrapper(err))).unwrap();
+            };
+            unknown:_ => {
+                panic!("Wrong message {:?}", unknown);
+            };
+        }
+    }
+}
+
+struct AppState {
+    supervisor: SupervisorRef,
+    workers: ChildrenRef,
+}
+
+impl AppState {
+    pub fn request<T: 'static + Debug + Send + Sync>(&self, body: T) -> Result<(), CustomStatus> {
+        let child = &self.workers.elems()[0];
+
+        run!(AppState::internal_request(child, body)).map_err(|err| err.0)
+    }
+
+    async fn internal_request<T: 'static + Debug + Send + Sync>(
+        child: &ChildRef,
+        body: T,
+    ) -> Result<(), CustomStatusWrapper> {
+        let answer = child
+            .ask_anonymously(body)
+            .expect("Couldn't perform request")
+            .await
+            .expect("Couldn't receive answer");
+
+        let mut res = None;
+
+        MessageHandler::new(answer)
+            .on_tell(|ue: Result<(), CustomStatusWrapper>, _| res = Some(ue))
+            .on_fallback(|_, _| panic!("Unknown message"));
+
+        res.unwrap()
+    }
 }
 
 #[launch]
@@ -659,6 +693,25 @@ fn rocket() -> _ {
     let _ = Options::from_args();
 
     let _ = update_votes(&DB);
+
+    // Initialize tracing logger
+    // so we get nice output on the console.
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(Level::WARN)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber).unwrap();
+
+    Bastion::init();
+    Bastion::start();
+    let supervisor = Bastion::supervisor(|sp| sp.with_strategy(SupervisionStrategy::OneForOne))
+        .expect("Couldn't create the supervisor.");
+    let workers = supervisor
+        .children(|children| children.with_exec(child_task))
+        .unwrap();
+    let state = AppState {
+        supervisor,
+        workers,
+    };
 
     rocket::build()
         .mount(
@@ -692,5 +745,6 @@ fn rocket() -> _ {
                 ..Default::default()
             }),
         )
+        .manage(state)
         .register("/", catchers![common::bad_request, common::unauthorized])
 }

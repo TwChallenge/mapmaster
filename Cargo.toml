@@ -19,3 +19,8 @@ serde_json = "1.0.68"
 strum = { version = "0.22", features = ["derive"] }
 derive_more = "0.99.16"
 reqwest = "0.11.6"
+bastion = { git = "https://github.com/bastion-rs/bastion", rev = "01eeb5861abeba8f36001f453353f0ee8101b811", features = ["tokio-runtime"] }
+anyhow = "1.0.51"
+tracing = "0.1.29"
+tokio = "1.14.0"
+tracing-subscriber = "0.3.3"
