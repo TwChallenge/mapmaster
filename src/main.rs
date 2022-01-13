@@ -86,10 +86,11 @@ fn map_to_vote_string(map: &Map) -> String {
 }
 
 fn generate_test_votes(maps: &[Map]) -> String {
-    maps.iter()
+    let votes = maps.iter()
         .map(map_to_test_vote_string)
         .collect::<Vec<_>>()
-        .join("\n")
+        .join("\n");
+    format!("clear_votes\n{}", votes)
 }
 
 fn generate_published_votes(maps: &[Map]) -> String {
