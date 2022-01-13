@@ -74,11 +74,14 @@ fn map_to_test_vote_string(map: &Map) -> String {
 }
 
 fn map_to_vote_string(map: &Map) -> String {
+    let base = &CONFIG.public_map_folder;
+    let folder = base.join(map.difficulty).join("flexreset.cfg");
     format!(
-        "add_vote \"{}\" \"change_map \\\"{}/{}\\\"\"",
+        "add_vote \"{}\" \"sv_reset_file \"{}\"; change_map \\\"{}/{}\\\"\"",
         map.name,
+        folder.to_string_lossy(),
         map.difficulty.to_string().to_lowercase(),
-        map.name
+        map.name,
     )
 }
 
@@ -704,6 +707,7 @@ fn rocket() -> _ {
         db
     };
 
+    println!("Updating maps...");
     let _ = update_votes(&db);
 
     let custom_state = CustomState { db };
