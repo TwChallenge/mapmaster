@@ -1,0 +1,561 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "mapmaster",
+    "description": "Our tool to manage teeworlds maps in a distributed manner.",
+    "contact": {
+      "name": "Homepage",
+      "url": "https://github.com/TwChallenge/mapmaster"
+    },
+    "version": "0.1.0"
+  },
+  "servers": [
+    {
+      "url": "/mapmaster"
+    }
+  ],
+  "paths": {
+    "/list": {
+      "get": {
+        "operationId": "list_maps",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "nullable": true
+            }
+          },
+          {
+            "name": "map_state",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/MapState",
+              "nullable": true
+            }
+          },
+          {
+            "name": "difficulty",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/Difficulty",
+              "nullable": true
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Map"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "# 400 Bad Request\nThe request given is wrongly formatted or data was missing. ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "# 401 Unauthorized\nThe authentication given was incorrect or insufficient. ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/create": {
+      "post": {
+        "operationId": "create_map",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMapData"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomError"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "# 400 Bad Request\nThe request given is wrongly formatted or data was missing. ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "# 401 Unauthorized\nThe authentication given was incorrect or insufficient. ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/change_difficulty": {
+      "post": {
+        "operationId": "change_map_difficulty",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeMapDifficultyData"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomError"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "# 400 Bad Request\nThe request given is wrongly formatted or data was missing. ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "# 401 Unauthorized\nThe authentication given was incorrect or insufficient. ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/approve": {
+      "post": {
+        "operationId": "approve_map",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JustTheMapName"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomError"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "# 400 Bad Request\nThe request given is wrongly formatted or data was missing. ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "# 401 Unauthorized\nThe authentication given was incorrect or insufficient. ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/publish": {
+      "post": {
+        "operationId": "publish_map",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JustTheMapName"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomError"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "# 400 Bad Request\nThe request given is wrongly formatted or data was missing. ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "# 401 Unauthorized\nThe authentication given was incorrect or insufficient. ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/recall": {
+      "post": {
+        "operationId": "recall_map",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JustTheMapName"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomError"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "# 400 Bad Request\nThe request given is wrongly formatted or data was missing. ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "# 401 Unauthorized\nThe authentication given was incorrect or insufficient. ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/decline": {
+      "post": {
+        "operationId": "decline_map",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JustTheMapName"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomError"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "# 400 Bad Request\nThe request given is wrongly formatted or data was missing. ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "# 401 Unauthorized\nThe authentication given was incorrect or insufficient. ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Map": {
+        "type": "object",
+        "required": [
+          "created_at",
+          "difficulty",
+          "last_changed",
+          "name",
+          "state"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "difficulty": {
+            "$ref": "#/components/schemas/Difficulty"
+          },
+          "state": {
+            "$ref": "#/components/schemas/MapState"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "last_changed": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          }
+        }
+      },
+      "Difficulty": {
+        "type": "string",
+        "enum": [
+          "easy",
+          "main",
+          "hard",
+          "insane"
+        ]
+      },
+      "MapState": {
+        "type": "string",
+        "enum": [
+          "new",
+          "declined",
+          "approved",
+          "published"
+        ]
+      },
+      "MyError": {
+        "description": "Error messages returned to user",
+        "type": "object",
+        "required": [
+          "err"
+        ],
+        "properties": {
+          "err": {
+            "description": "The title of the error message",
+            "type": "string"
+          },
+          "msg": {
+            "description": "The description of the error",
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "CustomError": {
+        "type": "object",
+        "required": [
+          "code",
+          "msg"
+        ],
+        "properties": {
+          "msg": {
+            "type": "string"
+          },
+          "code": {
+            "type": "integer",
+            "format": "uint16",
+            "minimum": 0.0
+          }
+        }
+      },
+      "CreateMapData": {
+        "type": "object",
+        "required": [
+          "difficulty",
+          "name",
+          "url"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "difficulty": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "ChangeMapDifficultyData": {
+        "type": "object",
+        "required": [
+          "difficulty",
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "difficulty": {
+            "type": "string"
+          }
+        }
+      },
+      "JustTheMapName": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "description": "Requires an API key to access.",
+        "type": "apiKey",
+        "name": "x-api-key",
+        "in": "header"
+      }
+    }
+  }
+}

@@ -8,7 +8,7 @@ use rocket::{
     State,
 };
 use rocket_okapi::{
-    openapi, openapi_get_routes, rapidoc::*, settings::UrlObject,
+    openapi, openapi_get_routes, rapidoc::*, settings::UrlObject, swagger_ui::*,
 };
 use schemars::JsonSchema;
 use std::{path::Path, str::FromStr, time::SystemTime};
@@ -715,7 +715,7 @@ fn rocket() -> _ {
 
     rocket::build()
         .mount(
-            "/",
+            "/mapmaster",
             openapi_get_routes![
                 list_maps,
                 create_map,
@@ -727,12 +727,20 @@ fn rocket() -> _ {
             ],
         )
         .mount(
+            "/",
+            make_swagger_ui(&SwaggerUIConfig {
+                url: "mapmaster/openapi.json".to_owned(),
+                ..Default::default()
+            }),
+        )
+
+        .mount(
             "/rapidoc/",
             make_rapidoc(&RapiDocConfig {
                 general: GeneralConfig {
                     spec_urls: vec![UrlObject::new(
                         "General",
-                        "../openapi.json",
+                        "/mapmaster/openapi.json",
                     )],
                     ..Default::default()
                 },

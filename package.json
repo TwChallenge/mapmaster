@@ -1,0 +1,22 @@
+{
+  "name": "mapmaster",
+  "version": "1.0.0",
+  "description": "A webservice we use to simplify uploading maps and changing associated meta data.",
+  "main": "index.js",
+  "scripts": {
+    "gendoc": "widdershins --environment gen/env.json openapi/openapi.json -o openapi/mapmaster.md"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hardliner66/mapmaster.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/hardliner66/mapmaster/issues"
+  },
+  "homepage": "https://github.com/hardliner66/mapmaster#readme",
+  "devDependencies": {
+    "widdershins": "^4.0.1"
+  }
+}
