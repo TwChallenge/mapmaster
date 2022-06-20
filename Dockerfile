@@ -16,6 +16,10 @@ RUN cargo build --release
 # We do not need the Rust toolchain to run the binary!
 FROM debian:bullseye-slim AS runtime
 WORKDIR app
+RUN \
+  apt-get update && \
+  apt-get install ca-certificates -y && \
+  apt-get clean
 COPY --from=builder /app/target/release/mapmaster /usr/local/bin/mapmaster
 COPY --from=builder /app/Rocket.toml /app
-CMD ["/usr/local/bin/mapmaster", "-t", "/test", "-m", "/maps", "-a", "/data/apikeys"]
+CMD ["/usr/local/bin/mapmaster", "--test-maps", "/test", "--published-maps", "/maps", "--apikeys", "/data/apikeys"]

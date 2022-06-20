@@ -15,14 +15,14 @@ Make sure you put your API keys into the folder you mount to `/test`.
 
 ```sh
 docker pull hardliner66/mapmaster
-docker run --rm -p 80:8000 -v ./data:/data -v ./maps:/maps ./maps/test:/test --name mapmaster hardliner66/mapmaster
+docker run --rm -p 80:8000 -v /srv/mapmaster/data:/data -v /srv/mapmaster/maps:/maps -v /srv/mapmaster/maps/test:/test --name mapmaster hardliner66/mapmaster
 ```
 
 ## Running local docker build
 Make sure you put your API keys into the folder you mount to `/test`.
 ```sh
 docker build -t mapmaster .
-docker run --rm -p 80:8000 -v ./data:/data -v ./maps:/maps ./maps/test:/test --name mapmaster mapmaster
+docker run --rm -p 80:8000 -v /srv/mapmaster/data:/data -v /srv/mapmaster/maps:/maps -v /srv/mapmaster/maps/test:/test --name mapmaster mapmaster
 ```
 
 ## Developer Mode
